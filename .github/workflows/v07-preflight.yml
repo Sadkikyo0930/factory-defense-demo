@@ -1,0 +1,48 @@
+﻿name: V0.7 release preflight
+on:
+  push:
+    branches: [release/v07-safe-merge]
+permissions:
+  contents: write
+jobs:
+  verify-backup-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify main and protect V0.6 rollback tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          old=4c8a6f0652bc4b82f9947c930e1686ddba0e4221
+          git fetch origin main
+          test "$(git rev-parse FETCH_HEAD)" = "$old"
+          tag=backup/v06-before-v07
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            test "$(git rev-list -n 1 "$tag")" = "$old"
+          else
+            git tag "$tag" "$old"
+            git push origin "refs/tags/$tag"
+          fi
+          echo "V0.6 rollback tag $tag => $old" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Install locked dependencies
+        working-directory: source
+        run: npm ci
+      - name: TypeScript and production build
+        working-directory: source
+        run: npm run build
+      - name: Report and original production model regression
+        working-directory: source
+        run: |
+          npm run test:report
+          node tests/company-model.cjs
+      - name: Verify publish payload matches source build
+        run: |
+          diff -r source/dist/assets assets
+          cmp source/dist/index.html index.html

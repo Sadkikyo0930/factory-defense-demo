@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-17",
+  "rows": [
+    {
+      "name": "FA分析岗",
+      "today": 61
+    },
+    {
+      "name": "TV祛除",
+      "today": 28
+    },
+    {
+      "name": "TV BD",
+      "today": 66
+    },
+    {
+      "name": "TV UV",
+      "today": 5
+    },
+    {
+      "name": "TV POL",
+      "today": 6
+    },
+    {
+      "name": "TV覆膜",
+      "today": 23
+    },
+    {
+      "name": "TV PI",
+      "today": 16
+    },
+    {
+      "name": "TV VI",
+      "today": 59
+    },
+    {
+      "name": "TV OUT",
+      "today": 4
+    },
+    {
+      "name": "黑胶",
+      "today": 43
+    }
+  ]
+}

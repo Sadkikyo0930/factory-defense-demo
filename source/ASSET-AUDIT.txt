@@ -1,0 +1,8 @@
+﻿reference-map: source=1672x941, cornerAlpha=255, cropped=1672x941, optimized=1280x720
+worker-bd: source=1254x1254, cornerAlpha=0, cropped=531x1131, optimized=180x384
+worker-pol: source=1254x1254, cornerAlpha=0, cropped=535x1185, optimized=173x384
+worker-qc: source=1254x1254, cornerAlpha=0, cropped=712x1165, optimized=235x384
+machine-bd: source=1254x1254, cornerAlpha=0, cropped=976x1023, optimized=366x384
+machine-pol: source=1254x1254, cornerAlpha=0, cropped=938x1091, optimized=330x384
+machine-film: source=1254x1254, cornerAlpha=0, cropped=933x852, optimized=384x351
+machine-qc: source=1254x1254, cornerAlpha=0, cropped=903x801, optimized=384x341
