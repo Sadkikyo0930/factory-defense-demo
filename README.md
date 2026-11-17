@@ -1,4 +1,4 @@
-# Factory Defense independent playtest
+# Factory Defense playtest
 
-Production build source: db020eaabbb13b33f63e86223c673eb6b769cb7f
-Individual worker withdrawal included. Chrome109 target, Win7/Chrome109 untested.
+Source commit ae8b8f65bbaeafe4e044ad2c97a1b7aef6c4cbc6
+MNT fixed300; free employee support; no manual-peel device; left extra staffing position; reduced rendering/simulation load.
