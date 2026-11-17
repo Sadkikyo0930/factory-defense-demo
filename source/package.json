@@ -9,7 +9,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "test:model": "node tests/model.cjs",
     "test:browser": "node tests/v04.cjs",
-    "test:report": "node tests/v07-model.cjs && node tests/report-headers.cjs"
+    "test:report": "node tests/v07-model.cjs && node tests/report-headers.cjs && node tests/v071-report.cjs",
+    "test:v071:browser": "node tests/v071-browser.cjs"
   },
   "dependencies": {
     "phaser": "3.80.1",

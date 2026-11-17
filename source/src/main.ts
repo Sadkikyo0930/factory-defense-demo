@@ -1,3 +1,4 @@
+import {rendererChoice,recordRuntime,sampleRuntime,runtimeError} from './runtime';
 import {setupReportImport} from './reportUI';
 import {Capability,supportNames} from './capabilities';
 import Phaser from 'phaser';
@@ -7,7 +8,8 @@ import { Workshop } from './Workshop';
 import {roleFamily,roleAsset} from './roleVisuals';
 let model = new FactoryModel();
 const scene = new Workshop(model);
-const game = new Phaser.Game({ type: Phaser.AUTO, parent: 'game', backgroundColor: '#c6d0c5', scene, scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: Math.max(200, window.innerHeight - 180) }, fps:{target:30,limit:30,smoothStep:true},render: { antialias: true, powerPreference:'low-power' } });
+const choice=rendererChoice(new URLSearchParams(location.search).get('renderer')==='canvas');
+const game = new Phaser.Game({ canvas:choice.canvas,/* Phaser3.80 runtime accepts WebGL here; its declaration only names 2D. */ context:choice.context as unknown as CanvasRenderingContext2D,type: choice.webgl?Phaser.WEBGL:Phaser.CANVAS, parent: 'game', backgroundColor: '#c6d0c5', scene, scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: Math.max(200, window.innerHeight - 180) }, fps:{target:30,limit:30,smoothStep:true},render: { antialias: true, powerPreference:'low-power' } });
 const el = (id: string) => document.getElementById(id)!;
 let lastUI = 0;
 scene.onChange = () => { const now = Date.now(); if (now - lastUI < 150)
@@ -70,7 +72,11 @@ el('closereport').onclick = () => resultDialog.close();
 const resize = () => { const rect = el('game').getBoundingClientRect(); game.scale.resize(rect.width, rect.height); game.scale.refresh(); };
 window.addEventListener('resize', resize);
 document.addEventListener('fullscreenchange', resize);
-new ResizeObserver(() => requestAnimationFrame(resize)).observe(el('game'));
+if(typeof ResizeObserver!=='undefined')new ResizeObserver(() => requestAnimationFrame(resize)).observe(el('game'));
+sampleRuntime(()=>({booted:game.isBooted,renderer:game.renderer?.type,canvas:{width:game.canvas?.width,height:game.canvas?.height,client:game.canvas?.getBoundingClientRect().toJSON()},scene:scene.sys?.settings.key,active:scene.sys?.isActive(),camera:scene.cameras?.main?{x:scene.cameras.main.scrollX,y:scene.cameras.main.scrollY,zoom:scene.cameras.main.zoom}:null,textures:game.textures?.getTextureKeys().length}));
+choice.canvas.addEventListener('webglcontextlost',()=>{recordRuntime('phase','WebGL上下文丢失');model.running=false;runtimeError('WebGL上下文丢失，已暂停并保留当前班次；等待浏览器恢复');});
+choice.canvas.addEventListener('webglcontextrestored',()=>{recordRuntime('phase','WebGL上下文已恢复，班次仍暂停');const status=el('boot-status');status.textContent='图形上下文已恢复，班次已保留并保持暂停，可点击继续。';setTimeout(()=>status.hidden=true,5000);});
+setTimeout(()=>{if(!scene.viewReady)runtimeError('车间初始化未完成，请打开诊断查看加载失败资源及场景状态');},15000);
 requestAnimationFrame(resize);
 if (new URLSearchParams(location.search).has('qa'))
     Object.assign(window, { factoryGame: game, getFactoryModel: () => model });
