@@ -1,3 +1,11 @@
+# 人员到岗派工验收候选（V0.7.1）
+
+本轮公共 WIP、公平派工、调岗暂停/恢复、待命回派及测试见 [STAFFED-DISPATCH.md](STAFFED-DISPATCH.md)。基线为上一轮格式修复提交 4f3dccd；保留独立分支，未合并或发布。推荐运行 `npm run test:production` 和 `npm run test:report`。真实帆软/公司电脑/完整 Excel COM 仍待实机验收。
+
+# 文件格式修复候选
+
+文件头诊断、兼容格式读取及可选 Windows Excel 只读提取工具见 [REPORT-FORMAT-COM.md](REPORT-FORMAT-COM.md)。本轮独立分支，不合并、不发布；真实日报与完整 Excel COM 流程尚未验收。
+
 # 当前版本 V0.7.1 本地候选
 
 公司电脑渲染降级、导入性能及分阶段诊断见 [V071.md](V071.md)。尚未在公司 Win7/Chrome109 或真实帆软文件验收，本轮未合并或发布；下列历史说明保留。

@@ -18,12 +18,12 @@ export function parseLocalReport(file:File,signal:AbortSignal,onProgress:(trace:
    if(ended)return;phase('worker');if(typeof Worker==='undefined')throw Error('浏览器不支持Worker，请用手动WIP设置或换用Chrome109及以上');
    worker=new Worker(new URL('./report.worker.ts',import.meta.url));
    worker.onerror=()=>fail(Error('解析Worker启动/运行失败，可能是资源路径、内存不足、损坏文件或浏览器限制；最近阶段：'+stageNames[trace.stage]));
-   worker.onmessage=event=>{if(ended)return;const message=event.data;if(message.progress){phase(message.progress.stage,message.progress.detail);if(message.timings)Object.assign(trace.timings,message.timings);return;}
+   worker.onmessage=event=>{if(ended)return;const message=event.data;if(message.format){trace.format=message.format;update();return;}if(message.progress){phase(message.progress.stage,message.progress.detail);if(message.timings)Object.assign(trace.timings,message.timings);return;}
     if(message.timings)Object.assign(trace.timings,message.timings);
     if(message.error){fail(Error(stageNames[message.stage as ImportStage]+'失败：'+message.error));return;}
     if(!message.preview){fail(Error('解析器返回了无效结果'));return;}ended=true;trace.total=performance.now()-start;onProgress({...trace});cleanup();resolve({preview:message.preview,fingerprint,trace});
    };
-   worker.postMessage({buffer,filename:file.name},[buffer]);
+   worker.postMessage({buffer,filename:file.name,expectedBytes:file.size},[buffer]);
   }catch(e){fail(e instanceof Error?e:Error(String(e)));}})();
  });
 }

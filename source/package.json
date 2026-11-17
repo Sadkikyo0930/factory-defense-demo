@@ -9,8 +9,11 @@
     "preview": "vite preview --host 127.0.0.1",
     "test:model": "node tests/model.cjs",
     "test:browser": "node tests/v04.cjs",
-    "test:report": "node tests/v07-model.cjs && node tests/report-headers.cjs && node tests/v071-report.cjs",
-    "test:v071:browser": "node tests/v071-browser.cjs"
+    "test:report": "node tests/v07-model.cjs && node tests/report-headers.cjs && node tests/v071-report.cjs && node tests/report-format.cjs",
+    "test:v071:browser": "node tests/v071-browser.cjs",
+    "test:report-format:browser": "node tests/report-format-browser.cjs",
+    "test:production": "node tests/company-model.cjs && node tests/staffed-dispatch.cjs && node tests/v05-model.cjs",
+    "test:dispatch:browser": "node tests/staffed-browser.cjs"
   },
   "dependencies": {
     "phaser": "3.80.1",

@@ -1,0 +1,70 @@
+name: V071 staffed dispatch release preflight
+on:
+  push:
+    branches: [release/v071-staffed-dispatch]
+permissions:
+  contents: write
+concurrency:
+  group: staffed-dispatch-release
+  cancel-in-progress: false
+jobs:
+  verify-build-payload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify unchanged main and preserve rollback tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          old=9503da474b7c37ecf9b964860daf37c784f9e73a
+          git fetch origin main
+          test "$(git rev-parse FETCH_HEAD)" = "$old"
+          tag=backup/v071-before-staffed-20261118
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            test "$(git rev-list -n 1 "$tag")" = "$old"
+          else
+            git tag "$tag" "$old"
+            git push origin "refs/tags/$tag"
+          fi
+          echo "Rollback: $tag => $old" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Install locked dependencies
+        working-directory: source
+        run: npm ci
+      - name: Production and local report regression
+        working-directory: source
+        run: |
+          npm run test:production
+          npm run test:report
+      - name: TypeScript and production build
+        working-directory: source
+        run: npm run build
+      - name: Record verified payload on isolated release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Retain previous hashed files for browsers holding a cached old index.
+          mkdir -p assets
+          cp -a source/dist/assets/. assets/
+          cp source/dist/index.html index.html
+          node -e "require('fs').writeFileSync('release.json',JSON.stringify({version:'V0.7.1 staffed dispatch',sourceCommit:'5199d9fbe4144ffd0a7bfe4fefadd7286bb6f446',buildTarget:'chrome109',realCompanyPC:false,actualFineReport:false,fullExcelCOM:false},null,2))"
+          for file in source/dist/assets/*; do cmp "$file" "assets/$(basename "$file")"; done
+          cmp source/dist/index.html index.html
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets index.html release.json
+          git commit -m 'build: verified V071 staffed dispatch Pages payload'
+          git push origin HEAD:refs/heads/release/v071-staffed-dispatch
+          echo "Verified payload commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: staffed-dispatch-verification
+          path: |
+            source/artifacts/
+            release.json
