@@ -8,8 +8,19 @@ export function mapReportName(v:unknown,group?:'TV'|'MNT'):ReportKey|undefined{i
 export function count(v:unknown):number|null{if(typeof v==='string'){if(!/^\d+(?:,\d{3})*$/.test(v.trim())&&!/^\d+$/.test(v.trim()))return null;v=Number(v.replace(/,/g,''));}return typeof v==='number'&&Number.isSafeInteger(v)&&v>=0?v:null;}
 export function splitPOL(total:number,ratio:number){if(count(total)===null||!Number.isFinite(ratio)||ratio<0||ratio>1)throw Error('POL总量或比例非法');const peel=Math.round(total*ratio);return {peel,pol:total-peel};}
 export function validateSnapshot(s:WipSnapshot){if(!/^\d{4}-\d{2}-\d{2}$/.test(s.date)||new Date(s.date).toISOString().slice(0,10)!==s.date)throw Error('请选择有效日报日期');for(const key of reportKeys)if(count(s.counts[key])===null)throw Error(reportLabels[key]+' 必须为非负安全整数');splitPOL(s.counts.POL_TOTAL,s.peelRatio);let total=0;for(const v of Object.values(s.counts)){total+=v;if(!Number.isSafeInteger(total))throw Error('初始WIP合计超出安全整数范围');}return total;}
-export function makePreview(filename:string,sheet:string,data:{name:unknown;today:unknown;group?:'TV'|'MNT'}[],dates:string[],extra:string[]=[]):ReportPreview{const groups=new Map<ReportKey,{names:string[];values:unknown[]}>(),ignored:string[]=[],warnings=[...extra];for(const row of data){const n=String(row.name??'').trim();if(!n)continue;const key=mapReportName(n,row.group);if(!key){if(row.today!==undefined&&row.today!==null&&row.today!==''){ignored.push(n+'：'+String(row.today));}continue;}const g=groups.get(key)||{names:[],values:[]};g.names.push(n);g.values.push(row.today);groups.set(key,g);}
-const rows=reportKeys.map(key=>{const g=groups.get(key);if(!g)return {key,originalNames:[],values:[],value:0,problem:key==='TAPE'?'无独立字段，默认0':'未找到岗位，暂填0，请核对'};const parsed=g.values.map(count),unique=[...new Set(parsed.filter(v=>v!==null))];let problem=parsed.includes(null)?'存在空白或非法值，须手动确认':unique.length>1?'白夜班/重复岗位数值不一致，禁止相加，请确认':g.values.length>1?'重复快照已去重，不相加':'';return {key,originalNames:[...new Set(g.names)],values:g.values,value:parsed.includes(null)||unique.length!==1?null:unique[0],problem};});const uniqueDates=[...new Set(dates)];if(uniqueDates.length!==1)warnings.push(uniqueDates.length?'日期不一致，请选择正确日期并确认':'未识别日报日期，请手动填写');if(ignored.length)warnings.push('未导入的其他/未映射岗位已列出，请核对（MNT不计入TV初始WIP）');return {filename,sheet,dates:uniqueDates,rows,warnings,ignored};}
+export function makePreview(filename:string,sheet:string,data:{name:unknown;today:unknown;group?:'TV'|'MNT'}[],dates:string[],extra:string[]=[]):ReportPreview{
+ const groups=new Map<ReportKey,{names:Set<string>;values:Map<string,unknown>;count:number}>(),ignored:string[]=[],seenIgnored=new Set<string>(),warnings=[...extra];let omitted=0;
+ for(const row of data){const n=String(row.name??'').trim();if(!n)continue;const key=mapReportName(n,row.group);
+  if(!key){if(row.today!==undefined&&row.today!==null&&row.today!==''){const summary=(n+'：'+String(row.today)).slice(0,300);if(!seenIgnored.has(summary)){if(ignored.length<200){ignored.push(summary);seenIgnored.add(summary);}else omitted++;}}continue;}
+  const g=groups.get(key)||{names:new Set<string>(),values:new Map<string,unknown>(),count:0};g.names.add(n);g.count++;g.values.set(typeof row.today+':'+String(row.today),row.today);if(g.values.size>64||g.names.size>64)throw Error(reportLabels[key]+'候选快照/名称过多，请导出精简日报再确认');groups.set(key,g);
+ }
+ const rows=reportKeys.map(key=>{const g=groups.get(key);if(!g)return {key,originalNames:[],values:[],value:0,problem:key==='TAPE'?'无独立字段，默认0':'未找到岗位，暂填0，请核对'};
+  const values=[...g.values.values()],present=values.filter(v=>v!==null&&v!==undefined&&String(v).trim()!==''),parsed=present.map(count),unique=[...new Set(parsed.filter(v=>v!==null))];
+  const problem=!present.length?'今日实绩为空，须手动确认':parsed.includes(null)?'存在非法值，须手动确认':unique.length>1?'白夜班/重复岗位数值不一致，禁止相加，请确认':present.length<values.length?'重复快照空白已忽略，不相加':g.count>1?'重复快照已去重（'+g.count+'行），不相加':'';
+  return {key,originalNames:[...g.names],values,value:parsed.includes(null)||unique.length!==1?null:unique[0],problem};
+ });
+ const uniqueDates=[...new Set(dates)];if(uniqueDates.length!==1)warnings.push(uniqueDates.length?'日期不一致，请选择正确日期并确认':'未识别日报日期，请手动填写');if(ignored.length)warnings.push('未导入的其他/未映射岗位已列出，请核对（MNT不计入TV初始WIP）');if(omitted)warnings.push('另有'+omitted+'条未映射记录未展开显示，均未导入，请精简日报核对');return {filename,sheet,dates:uniqueDates,rows,warnings,ignored};
+}
 export interface SheetGrid{name:string;cells:unknown[][];merges:{s:{r:number;c:number};e:{r:number;c:number}}[];}
 type CellRange=SheetGrid['merges'][number];
 interface HeaderCell {r:number;c:number;value:unknown;key:string;range:CellRange;}
@@ -72,11 +83,13 @@ function dataRows(sheet:PreparedSheet,nameCol:number,todayCol:number,start:numbe
     return result;
 }
 /** Strictly discover the WIP leaf by merged column ownership, not row offsets. */
-export function parseGrids(filename:string,sheets:SheetGrid[]):ReportPreview{
+export function parseGrids(filename:string,sheets:SheetGrid[],phase:(stage:'headers'|'extract'|'map')=>void=()=>{}):ReportPreview{
+    phase('headers');
     const prepared=sheets.map(prepareSheet);
     const candidates:{sheet:PreparedSheet;today:HeaderCell;nameCol:number;start:number;end:number;data:ExcelRow[]}[]=[];
     const diagnostics:string[]=[];
     for(const sheet of prepared){
+        phase('headers');
         const {nodes,roles}=sheet,todays=nodes.filter(n=>n.key==='今日实绩');
         const headers=nodes.filter(n=>/岗位|工序|站点|情况|实绩|出勤|人员|WIP|班次|明细|目标|BAL/.test(n.key));
         diagnostics.push(`工作表「${sheet.name}」：${sheet.rows.length}行 × ${sheet.width}列`,
@@ -102,7 +115,9 @@ export function parseGrids(filename:string,sheets:SheetGrid[]):ReportPreview{
             const nextHeaders=nodes.filter(n=>n.r>=start&&(roleHeaders.has(n.key)||n.key==='WIP情况'));
             const end=nextHeaders.reduce((end,n)=>Math.min(end,n.r),sheet.rows.length);
             const columns=[] as {c:number;data:ExcelRow[];distinct:number;count:number;inHeader:boolean}[];
-            for(let c=0;c<today.c;c++){
+            phase('extract');
+            const possibleColumns=[...new Set(nodes.filter(n=>n.r>=start&&n.r<end&&n.c<today.c&&mapReportName(n.value,'TV')).map(n=>n.c))];
+            for(const c of possibleColumns){
                 const data=dataRows(sheet,c,today.c,start,end),keys=data.map(row=>mapReportName(row.name,row.group)).filter(Boolean);
                 if(keys.length)columns.push({c,data,distinct:new Set(keys).size,count:keys.length,inHeader:roleBand.some(n=>n.c<=c&&n.range.e.c>=c)});
             }
@@ -123,5 +138,6 @@ export function parseGrids(filename:string,sheets:SheetGrid[]):ReportPreview{
             const m=/(20\d{2})[年/.-](\d{1,2})[月/.-](\d{1,2})/.exec(token)!;dates.push(`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`);
         }
     }
+    phase('map');
     return makePreview(filename,sheet.name,data,dates,[...(preferred.length?[]:['未使用常规日报：根据严格表头自动发现工作表']),`识别位置：岗位 ${column(nameCol)}列；WIP今日实绩 ${address(today)}；数据起始第${start+1}行`]);
 }

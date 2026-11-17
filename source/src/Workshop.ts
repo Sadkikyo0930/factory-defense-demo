@@ -1,3 +1,4 @@
+import {recordRuntime,runtimeState,runtimeError,runtimeReady} from './runtime';
 import {Capability,supportNames} from './capabilities';
 import Phaser from 'phaser';
 import {roleFamily,roleStyle,toolIcon,roleAsset,equipmentAsset} from './roleVisuals';
@@ -25,12 +26,13 @@ export class Workshop extends Phaser.Scene {
     lastStatus=0;
     onChange: () => void = () => { };
     constructor(model: FactoryModel) { super('workshop'); this.model = model; }
-    preload() { for (const key of ['workshop'])
+    preload() { recordRuntime('phase','场景preload');recordRuntime('loaded',0);recordRuntime('failed',[]);const complete=()=>recordRuntime('loaded',Number(runtimeState.loaded)+1),failed=(file:Phaser.Loader.File)=>{(runtimeState.failed as string[]).push(file.key+' / '+String(file.url));runtimeError('资源加载失败：'+file.key);};this.load.on('filecomplete',complete);this.load.on('loaderror',failed);this.events.once('shutdown',()=>{this.load.off('filecomplete',complete);this.load.off('loaderror',failed);});for (const key of ['workshop'])
         this.load.image(key, 'art/' + key + '.png');this.preloadV05(); }
     preloadV05(){for(const role of new Set(Object.values(roleAsset)))for(const state of ['idle','walk','work'])this.load.spritesheet(role+'-'+state,'v06/sheets/'+role+'_'+state+'.png',{frameWidth:160,frameHeight:220});for(const key of new Set(Object.values(roleAsset)))this.load.image('role-'+key,'v05/roles/sprites/'+key+'.png');for(const key of new Set(Object.values(equipmentAsset)))if(key!=='inspection_vi'&&key!=='pol_manual_peel')this.load.image('eq-'+key,key==='pol_manual_peel'?'v06/pol_manual_peel.png':'v05/equipment/'+key+'.png');for(const key of ['bd','pol','film','overjudge','ok','ng'])this.load.image('product-'+key,'v05/products/panel_'+key+'.png');}
     text(x: number, y: number, t: string, size = 14, color = '#344b51') { return this.add.text(x, y, t, { fontFamily: 'Microsoft YaHei', fontSize: size, color }).setOrigin(.5); }
     image(x: number, y: number, key: string, w: number, h: number) { const v = this.add.image(x, y, key); v.setScale(Math.min(w / v.width, h / v.height)); return v; }
     create() {
+        recordRuntime('phase','场景create');
         this.input.dragDistanceThreshold = 7;for(const role of new Set(Object.values(roleAsset)))for(const state of ['idle','walk','work']){const key=role+'-'+state;if(!this.anims.exists(key))this.anims.create({key,frames:this.anims.generateFrameNumbers(key,{start:0,end:state==='idle'?3:state==='walk'?7:5}),frameRate:state==='walk'?7:state==='work'?5:3,repeat:-1});}
         this.add.image(700, 450, 'workshop').setDisplaySize(1480, 1000).setDepth(-10);
         const g = this.add.graphics().setDepth(-5);
@@ -68,7 +70,7 @@ export class Workshop extends Phaser.Scene {
         this.text(1160,855,'VI 4 人工位 · OUT 兼顾',12);
         this.text(1340, 675, 'OUT', 24);
         this.text(1340, 705, 'VI 人员兼顾', 11);
-        this.drawStations();
+        this.drawStations();recordRuntime('loaded',this.textures.getTextureKeys().length);runtimeReady();
         this.scale.on('resize', this.fit, this);this.events.once('shutdown',()=>{this.scale.off('resize',this.fit,this);this.viewReady=false;this.pan=false;});
         this.fit();
         this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => {

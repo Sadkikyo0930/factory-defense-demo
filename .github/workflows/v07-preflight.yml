@@ -1,7 +1,7 @@
-name: V0.7 header fix preflight
+name: V0.7.1 release preflight
 on:
   push:
-    branches: [fix/v07-finereport-headers]
+    branches: [release/v071-company-compat-import]
 permissions:
   contents: write
 jobs:
@@ -15,10 +15,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          old=cfd076679b93417c339d0baf789392b384e487bc
+          old=8e6487ad022bee8427659e3ef163c1b31773d0b1
           git fetch origin main
           test "$(git rev-parse FETCH_HEAD)" = "$old"
-          tag=backup/v07-before-header-fix
+          tag=backup/v07-before-v071
           if git show-ref --verify --quiet "refs/tags/$tag"; then
             test "$(git rev-list -n 1 "$tag")" = "$old"
           else

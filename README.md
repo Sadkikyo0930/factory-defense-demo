@@ -1,15 +1,15 @@
-﻿# Factory Defense V0.7 — FineReport header fix
+﻿# Factory Defense V0.7.1 independent playable demo
 
-Playable demo: https://sadkikyo0930.github.io/factory-defense-demo/
+https://sadkikyo0930.github.io/factory-defense-demo/
 
-Source: source/ (Phaser 3 + TypeScript + Vite). Corresponding local source commit: d6da0dca416e341116c2ad521dca5112f59f2380.
+Source: source/ (Phaser3 + TypeScript + Vite). Local source commit d11f78a557b04f2105b8a058ceeb523f1d98f6bc.
 
-Header fix: recognizes 岗位 / 岗位明细, fullwidth and whitespace variants, deep merged WIP情况 → 今日实绩 headers, original sheet coordinates and TV/MNT grouping. Failed recognition displays sheet/header/candidate diagnostics. It never substitutes attendance, target, yesterday or BAL values. Existing production rules and art unchanged.
+This release adds tested WebGL probing / Canvas2D fallback, visible initialization and asset diagnostics, context-loss preservation, and staged local report parsing with cancellation, selective sheet decoding and the same 15-second total budget. Production routes, staffing, counts and artwork are unchanged.
 
-Rollback before this patch: backup/v07-before-header-fix => cfd076679b93417c339d0baf789392b384e487bc.
-Original V0.6 backup retained: backup/v06-before-v07 => 4c8a6f0652bc4b82f9947c930e1686ddba0e4221.
+Diagnostics: append ?diagnostics; explicit Canvas comparison: ?renderer=canvas&diagnostics (use another tab to preserve the original session). No automatic storage clearing or diagnostic upload.
 
-Tests and limitations: source/REPORT-HEADER-FIX.md and source/V07.md (historical local-development deployment statements are superseded by this release).
-Synthetic XLSX/XLS fixtures only. Actual FineReport Excel and Windows7/Chrome109 have NOT been validated.
+Rollback: backup/v07-before-v071 => 8e6487ad022bee8427659e3ef163c1b31773d0b1. Earlier backup tags remain unchanged.
 
-Build: cd source && npm ci && npm run build. Pages still serves the root build from main. No forced history changes.
+Actual company-machine grey-screen cause, actual FineReport Excel and Win7/Chrome109 are NOT accepted/tested. Automated and Chromium131 WebGL/Canvas/synthetic workbook checks passed. See source/V071.md; its historical local-only deployment statement is superseded by this release.
+
+Build: cd source && npm ci && npm run build. Existing main-root Pages site remains unchanged. No force push.
