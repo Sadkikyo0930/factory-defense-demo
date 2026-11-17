@@ -1,7 +1,7 @@
-﻿name: V0.7 release preflight
+name: V0.7 header fix preflight
 on:
   push:
-    branches: [release/v07-safe-merge]
+    branches: [fix/v07-finereport-headers]
 permissions:
   contents: write
 jobs:
@@ -11,21 +11,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Verify main and protect V0.6 rollback tag
+      - name: Verify main and protect V0.7 rollback tag
         shell: bash
         run: |
           set -euo pipefail
-          old=4c8a6f0652bc4b82f9947c930e1686ddba0e4221
+          old=cfd076679b93417c339d0baf789392b384e487bc
           git fetch origin main
           test "$(git rev-parse FETCH_HEAD)" = "$old"
-          tag=backup/v06-before-v07
+          tag=backup/v07-before-header-fix
           if git show-ref --verify --quiet "refs/tags/$tag"; then
             test "$(git rev-list -n 1 "$tag")" = "$old"
           else
             git tag "$tag" "$old"
             git push origin "refs/tags/$tag"
           fi
-          echo "V0.6 rollback tag $tag => $old" >> "$GITHUB_STEP_SUMMARY"
+          echo "V0.7 rollback tag $tag => $old" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
