@@ -1,0 +1,8 @@
+{
+  "version": "V0.7.1 staffed dispatch",
+  "sourceCommit": "5199d9fbe4144ffd0a7bfe4fefadd7286bb6f446",
+  "buildTarget": "chrome109",
+  "realCompanyPC": false,
+  "actualFineReport": false,
+  "fullExcelCOM": false
+}

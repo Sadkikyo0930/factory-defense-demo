@@ -1,4 +1,5 @@
 import {recordRuntime,runtimeState,runtimeError,runtimeReady} from './runtime';
+import {queueStage,holdingPoint,transportPoint} from './dispatching';
 import {Capability,supportNames} from './capabilities';
 import Phaser from 'phaser';
 import {roleFamily,roleStyle,toolIcon,roleAsset,equipmentAsset} from './roleVisuals';
@@ -24,6 +25,8 @@ export class Workshop extends Phaser.Scene {
     viewReady=false;
     faLabel!:Phaser.GameObjects.Text;
     lastStatus=0;
+    bays=new Map<Stage,Phaser.GameObjects.Text>();
+    piles=new Map<Stage,Phaser.GameObjects.Image>();
     onChange: () => void = () => { };
     constructor(model: FactoryModel) { super('workshop'); this.model = model; }
     preload() { recordRuntime('phase','场景preload');recordRuntime('loaded',0);recordRuntime('failed',[]);const complete=()=>recordRuntime('loaded',Number(runtimeState.loaded)+1),failed=(file:Phaser.Loader.File)=>{(runtimeState.failed as string[]).push(file.key+' / '+String(file.url));runtimeError('资源加载失败：'+file.key);};this.load.on('filecomplete',complete);this.load.on('loaderror',failed);this.events.once('shutdown',()=>{this.load.off('filecomplete',complete);this.load.off('loaderror',failed);});for (const key of ['workshop'])
@@ -64,13 +67,13 @@ export class Workshop extends Phaser.Scene {
             this.add.rectangle(x, y, 230, 36, 0x294b55).setStrokeStyle(2, 0xd9b66a);
             this.text(x, y, title, 19, '#fff0c5');
         }
-        this.text(730,875,'动画：临时运动效果 · 支援资格为演示映射',11);
+        this.text(730,875,'动画为过渡素材 · 员工可跨岗支援 · FA节拍为演练值',11);
         this.text(96, 465, 'FA', 30, '#23474d');
         this.text(100,500,'FA 总量待派',13);this.faLabel=this.text(86,540,'',12).setDepth(951).setBackgroundColor('#fff4d9dd').setPadding(4);
         this.text(1160,855,'VI 4 人工位 · OUT 兼顾',12);
         this.text(1340, 675, 'OUT', 24);
         this.text(1340, 705, 'VI 人员兼顾', 11);
-        this.drawStations();recordRuntime('loaded',this.textures.getTextureKeys().length);runtimeReady();
+        this.drawStations();this.bays.clear();for(const stage of new Set(this.model.stations.map(s=>queueStage(s.stage)))){const p=holdingPoint(stage);this.add.ellipse(p.x-18,p.y+10,82,23,0x57776e,.22).setDepth(p.y);this.bays.set(stage,this.text(stage==='VI'?1260:p.x-18,stage==='VI'?870:stage==='FA'?620:p.y-22,'',11).setDepth(952).setBackgroundColor('#fff2d9dd').setPadding(2));}recordRuntime('loaded',this.textures.getTextureKeys().length);runtimeReady();
         this.scale.on('resize', this.fit, this);this.events.once('shutdown',()=>{this.scale.off('resize',this.fit,this);this.viewReady=false;this.pan=false;});
         this.fit();
         this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => {
@@ -114,13 +117,13 @@ export class Workshop extends Phaser.Scene {
             this.selectedWorker = undefined;
     } this.selectedStation = s.id; this.onChange(); }
     drawStations() { for (const s of this.model.stations) {
-        const key=['VI','MANUAL_PEEL'].includes(s.stage)?'role-'+roleAsset[s.stage]:'eq-'+equipmentAsset[s.stage];
+        const key=['FA','VI','MANUAL_PEEL'].includes(s.stage)?'role-'+roleAsset[s.stage]:'eq-'+equipmentAsset[s.stage];
         this.add.ellipse(s.x,s.y+7,108,23,0x274246,.25);
-        const body=this.image(s.x,s.y-45,key,['VI','MANUAL_PEEL'].includes(s.stage)?49:105,['VI','MANUAL_PEEL'].includes(s.stage)?75:105).setDepth(s.y);
-        if(['VI','MANUAL_PEEL'].includes(s.stage))body.setAlpha(.22);
+        const body=this.image(s.x,s.y-45,key,['FA','VI','MANUAL_PEEL'].includes(s.stage)?49:105,['FA','VI','MANUAL_PEEL'].includes(s.stage)?75:105).setDepth(s.y);
+        if(['FA','VI','MANUAL_PEEL'].includes(s.stage))body.setAlpha(.22);
         // Actual process label covers the source machine's inconsistent printed panel.
-        if(!['VI','MANUAL_PEEL'].includes(s.stage)){this.add.rectangle(s.x,s.y-51,66,17,0x254d60).setDepth(s.y+1);this.text(s.x,s.y-51,names[s.stage],11,'#fff5ce').setDepth(s.y+2);}
-        this.text(s.x, s.y - (s.stage==='VI'?85:111), names[s.stage] + ' ' + s.id.split('-')[1], 13).setDepth(950).setBackgroundColor('#fff1d5cc').setPadding(3);
+        if(!['FA','VI','MANUAL_PEEL'].includes(s.stage)){this.add.rectangle(s.x,s.y-51,66,17,0x254d60).setDepth(s.y+1);this.text(s.x,s.y-51,names[s.stage],11,'#fff5ce').setDepth(s.y+2);}
+        this.text(s.x, s.y - (s.stage==='VI'?85:111), s.stage==='FA'?'FA 分析·演练位':names[s.stage] + ' ' + s.id.split('-')[1], 13).setDepth(950).setBackgroundColor('#fff1d5cc').setPadding(3);
         const lamp = this.add.circle(s.x - 43, s.y - 84, 5, 0xea986e).setDepth(951);
         const status = this.text(s.x, s.y + 24, '＋ 部署', 11).setDepth(950).setBackgroundColor('#fff1d5cc').setPadding(2);
         const bar = this.add.rectangle(s.x - 40, s.y + 43, 0, 4, 0x4ec9a5).setOrigin(0, .5).setDepth(951);
@@ -133,27 +136,23 @@ export class Workshop extends Phaser.Scene {
     }, to: {
         x: number;
         y: number;
-    }, t: number) { const aisle = (y: number) => y < 330 ? 300 : y < 570 ? 535 : 775; const pts = [from, { x: from.x, y: aisle(from.y) }, { x: 145, y: aisle(from.y) }, { x: 145, y: aisle(to.y) }, { x: to.x, y: aisle(to.y) }, to]; const lengths = pts.slice(1).map((p, i) => Phaser.Math.Distance.Between(p.x, p.y, pts[i].x, pts[i].y)); let dist = lengths.reduce((a, b) => a + b, 0) * t; for (let i = 0; i < lengths.length; i++) {
-        if (dist <= lengths[i] && lengths[i] > 0)
-            return { x: Phaser.Math.Linear(pts[i].x, pts[i + 1].x, dist / lengths[i]), y: Phaser.Math.Linear(pts[i].y, pts[i + 1].y, dist / lengths[i]) };
-        dist -= lengths[i];
-    } return to; }
+    }, t: number) { return transportPoint(from,to,t); }
     update(_time: number, delta: number) {
         this.updateCamera(delta);
         this.model.tick(Math.min(delta / 1000, .1));
-        const m = this.model;this.faLabel.setText('新IN待派 '+m.pendingTV+'\nFA共享 '+m.sharedFA+'\nMNT '+m.pendingMNT);
+        const m = this.model;this.faLabel.setText('TV待投/分析 '+m.faWaiting+'\nFA共享未分配 '+m.sharedFA+'\nMNT待脱泡 '+m.pendingMNT);
         const alive=new Set(m.products.map(p=>p.id));for(const [id,obj] of this.items)if(!alive.has(id)){obj.destroy();this.items.delete(id);}
-        const queues=new Map<string,Product[]>();for(const p of m.products)if(p.state==='queue'){const q=queues.get(p.station!)||[];q.push(p);queues.set(p.station!,q);}
+        const queues=new Map<string,Product[]>();for(const p of m.products)if(p.state==='queue'){const key=p.route[p.step],q=queues.get(key)||[];q.push(p);queues.set(key,q);}
         if(_time-this.lastStatus>100){this.lastStatus=_time;for (const s of m.stations) {
             const v = this.views.get(s.id)!;
             const q=m.queueFor(s.stage);
-            if (['VI','MANUAL_PEEL'].includes(s.stage))
+            if (['FA','VI','MANUAL_PEEL'].includes(s.stage))
                 v.body.setVisible(s.worker === undefined);
-            v.lamp.setFillStyle(s.light === 'busy' ? 0x57d895 : q ? 0xff6651 : s.worker === undefined ? 0xf4c069 : 0x7fd2f0);
-            v.status.setText(s.worker === undefined ? (q ? '缺员 · 排队 ' + q : '＋ 部署') : s.light === 'busy' ? '加工 ' + Math.floor((1 - s.remaining / s.total) * 100) + '%' : s.light === 'paused' ? '移动中 · 暂停加工' : q ? '等待 ' + q : '待机');
-            if(s.stage==='MANUAL_PEEL'&&m.config.manualPeelCapacityPerShift===null)v.status.setText('产能待设置');
-            if(s.stage==='VI'&&q>0)v.status.setText('工区共：待检 '+(q-m.outQueue)+' / 待OUT '+m.outQueue);
-            else if(q>0)v.status.setText(v.status.text+(['PEEL','MANUAL_PEEL'].includes(s.stage)?' · 共享待撕 ':' · 工区共 ')+q);
+            v.lamp.setFillStyle(!s.operational ? 0xef5454 : s.light==='paused'?0xffad48:s.light === 'busy' ? 0x57d895 : q ? 0xff6651 : s.worker === undefined ? 0xf4c069 : 0x7fd2f0);
+            const worker=m.workers.find(w=>w.id===s.worker);v.status.setText(!s.operational?'设备停用':s.active.length&&s.light==='paused'?'在制暂停 · 进度保留':worker?.walking?'人员赶往岗位':s.worker===undefined?'＋ 部署':s.light==='receiving'?'接料中':s.light==='busy'?'加工 '+Math.floor((1-s.remaining/s.total)*100)+'%':'待机');
+            if(s.operational&&s.stage==='MANUAL_PEEL'&&m.config.manualPeelCapacityPerShift===null)v.status.setText('产能待设置');
+
+
             v.status.setColor(q > 2 ? '#b53825' : '#344b51');
             v.bar.width = s.active.length ? 80 * (1 - s.remaining / s.total) : 0;
             if (s.light === 'busy' && m.running)
@@ -162,6 +161,7 @@ export class Workshop extends Phaser.Scene {
                 v.body.rotation = 0;
         }
         }
+        for(const [stage,label] of this.bays){const q=m.queueFor(stage);label.setText(names[stage]+' 公共待料 '+q).setVisible(q>0).setColor(q>4?'#ad3627':'#344b51');let pile=this.piles.get(stage);if(!pile||!pile.scene){const bay=holdingPoint(stage);pile=this.image(bay.x,bay.y,'product-'+(['REMOVE','TAPE','BD','UV'].includes(stage)?'bd':['PEEL','POL','BUBBLE','BLACK'].includes(stage)?'pol':stage==='FILM'?'film':'overjudge'),38,26).setDepth(bay.y+6);this.piles.set(stage,pile);}pile.setVisible(q>4);}
         for(const [id,obj] of this.people){if(m.workers.find(w=>w.id===id)?.withdrawn){obj.destroy();this.people.delete(id);}}
         for (const w of m.deployedWorkers) {
             let obj = this.people.get(w.id);
@@ -182,7 +182,7 @@ export class Workshop extends Phaser.Scene {
                 obj.setData('worker', w.id);
                 obj.setData('start', { x: 120, y: 800 });
                 obj.setData('dest', '');
-                obj.on('pointerdown', () => { this.selected = w.role; this.selectedWorker = w.id; this.selectedStation = w.station; this.model.notice = '已选员工 ' + w.id + '，点击同资格空工位调动'; this.onChange(); });
+                obj.on('pointerdown', () => { this.selected = w.role; this.selectedWorker = w.id; this.selectedStation = w.station; this.model.notice = '已选员工 ' + w.id + '，点击任意空工位调动'; this.onChange(); });
                 this.input.setDraggable(obj);
                 this.people.set(w.id, obj);
             }
@@ -199,7 +199,7 @@ export class Workshop extends Phaser.Scene {
             const family=obj.getData('family') as 'bd'|'pol'|'qc';
             const actor=obj.getData('actor') as Phaser.GameObjects.Sprite;
             const prop=obj.getData('prop') as Phaser.GameObjects.Graphics;
-            const busy=s.active.length>0&&w.walking===0;
+            const busy=s.light==='busy'&&m.stationReady(s);
             // Real-time, low-amplitude motion: playback speed never shakes the characters faster.
             const phase=_time/1000;
             const angle=!m.running?0:w.walking>0?Math.sin(phase*6)*1.5:busy?Math.sin(phase*(family==='bd'?3:family==='pol'?2:1.3))*(family==='qc'?.7:1.5):0;
@@ -215,8 +215,8 @@ export class Workshop extends Phaser.Scene {
             }
             const productImage=obj.list[0] as Phaser.GameObjects.Image;productImage.setTexture('product-'+(p.state==='return'?'ng':p.state==='exit'?'ok':p.kind==='REVIEW'?'overjudge':p.kind.toLowerCase()));
             obj.setVisible(p.state !== 'done');
-            const queue=queues.get(p.station!)||[];obj.setVisible(p.state!=='done'&&(p.state!=='queue'||queue.indexOf(p)<8));
-            let pos = this.position(p,queues.get(p.station!)||[]);
+            const queue=queues.get(p.route[p.step])||[];obj.setVisible(p.state!=='done'&&(p.state!=='queue'||queue.indexOf(p)<6));
+            let pos = this.position(p,queues.get(p.route[p.step])||[]);
             obj.setPosition(pos.x, pos.y).setDepth(pos.y + 5);
             obj.setAlpha(p.state === 'work' ? .55 : 1);
         }
@@ -234,10 +234,6 @@ export class Workshop extends Phaser.Scene {
             d -= lengths[i];
         }
         return pts[4];
-    } const s = this.model.stations.find(s => s.id === p.station); if (!s)
-        return p.to; if (p.state === 'queue') {
-        const queue = queued;
-        const i = queue.indexOf(p);
-        return { x: s.x - 48 - (i % 4) * 27, y: s.y + 65 + Math.floor(i / 4) * 21 };
-    } return { x: s.x, y: s.y - 12 }; }
+    } if(p.state==='queue'){const bay=holdingPoint(p.route[p.step]),i=Math.max(0,queued.indexOf(p));return {x:bay.x-(i%3)*21,y:bay.y+Math.floor(i/3)*16};} const s = this.model.stations.find(s => s.id === p.station); if (!s)
+        return p.to; return { x: s.x, y: s.y - 12 }; }
 }
