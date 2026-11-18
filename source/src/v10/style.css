@@ -8,3 +8,29 @@ body[data-phase=battle] header,body[data-phase=battle] .mission,body[data-phase=
 body[data-phase=result] .mission,body[data-phase=result] .roster{display:none}body[data-phase=result] .battle-layout{height:calc(100% - 114px)}body[data-phase=result] #game{filter:brightness(.6)}
 #battle-result{width:min(1000px,94vw);padding:22px 28px;background:linear-gradient(#f2f7fd,#eaf2fb)}#battle-result::backdrop{background:#04132bea;backdrop-filter:blur(2px)}.result-hero{text-align:center;padding:4px 0 14px}.result-verdict{font-size:19px;font-weight:bold;color:#24617c}.result-big-score{font:800 76px/1.15 "Segoe UI",sans-serif;color:#078878;letter-spacing:-2px}.result-big-score small{font-size:19px;font-weight:normal;color:#7690a7;letter-spacing:0;margin-left:8px}.result-hero p{font-size:11px;color:#8196ad;margin:0}.result-parts{display:flex;border-top:1px solid #c8d9e9;border-bottom:1px solid #c8d9e9;padding:13px 0}.result-parts>div{flex:1;text-align:center;border-right:1px solid #c8d9e9}.result-parts>div:last-child{border:0}.result-parts span{display:block;color:#597a99;font-size:12px}.result-parts strong{display:block;font-size:26px;color:#245e8b}.result-parts small{font-size:13px;font-weight:normal;color:#7a95ac}.result-highlights{display:flex;gap:10px;margin:17px 0 5px}.result-highlights>div{flex:1;text-align:center;padding:10px 4px}.result-highlights strong{display:block;color:#234e70;font-size:25px}.result-highlights span{display:block;font-size:11px;color:#6c849c}.result-overview{text-align:center;color:#496c89;margin:6px 0 15px}#detailed-recap{border-top:1px solid #cbdce9;padding-top:12px}#detailed-recap>summary{font-size:13px;cursor:pointer;color:#2c6790;font-weight:bold;padding:6px 0}#battle-result .result-actions{margin-top:17px}#battle-result .table-scroll{max-height:37vh}
 @media(max-height:760px){#battle-result{padding:16px 24px}.result-big-score{font-size:64px}.result-hero{padding-bottom:10px}.result-highlights{margin-top:9px}.result-highlights>div{padding:7px 2px}.result-parts{padding:10px 0}.result-overview{font-size:11px;margin-bottom:8px}#combat-hud{height:52px;padding:0 16px;gap:15px}#combat-caption{font-size:17px}#combat-hud b{font-size:17px}}
+
+.roster{width:clamp(320px,26vw,350px);min-width:0;flex:none;padding:14px 12px;overflow:auto;overscroll-behavior:contain}
+.roster-heading{font-size:21px}.roster-heading span{font-size:18px}.roster>p{font-size:12px;margin:7px 5px 12px}
+.element-row{height:auto;min-height:68px;margin:0 0 7px;padding:6px 7px;gap:5px;border:1px solid #315879;border-left:3px solid var(--element);border-radius:9px;background:#122e4c}
+.element-row.selected{background:#214765;border-color:var(--element);box-shadow:inset 0 0 12px #8ebffd2b}
+.element-row .element-select{height:52px;gap:5px;font-size:16px;font-weight:bold;overflow:visible}
+.element-select img{display:block;width:42px;height:50px;flex:none;pointer-events:none}.element-glyph{width:24px;height:24px;flex:none}
+.element-row button[data-plus],.element-row button[data-minus]{width:44px;min-width:44px;height:44px;border:1px solid #5a81a5;border-radius:7px;font-size:22px;touch-action:manipulation}
+.element-row button[data-plus]:disabled::after{content:attr(title);font-size:9px;display:block;line-height:10px}
+.element-row button[data-plus]:disabled{font-size:14px;line-height:14px}
+.element-row strong{font-size:20px;min-width:18px}.roster-note{font-size:13px}
+#battle-result{background:linear-gradient(155deg,#1d3d58,#0e243e 60%);color:#eff6ff;border-color:#658caa;box-shadow:0 18px 60px #0009}
+#battle-result .dialog-heading,#battle-result .result-parts,#detailed-recap{border-color:#4b6885}
+.result-stars{font-size:35px;letter-spacing:9px;color:#ffdc84;text-shadow:0 2px 9px #ffd97460}
+#battle-result .result-verdict,#battle-result .result-big-score{color:#ffe0a0}
+#battle-result .result-parts strong,#battle-result .result-highlights strong{color:#daf5ff}
+#battle-result .result-parts span,#battle-result .result-highlights span,#battle-result .result-overview,#battle-result .result-notes,#detailed-recap>summary{color:#abc7df}
+#battle-result .result-metrics{background:#193752}#battle-result th{background:#284763;color:#daefff}#battle-result td,#battle-result th{border-color:#42627c}#battle-result .missed td{background:#533d44;color:#ffd3a9}
+@media(max-width:1000px){
+ .roster{width:min(320px,42vw);padding:9px 6px}
+ .element-row{gap:3px;padding:4px}
+ .element-row .element-select{font-size:clamp(12px,1.7vw,16px)}
+ .element-select img{width:32px;height:44px}
+ .element-row button[data-plus],.element-row button[data-minus]{width:40px;min-width:40px;height:40px}
+ .mission>div{flex:1;min-width:0}.mission>div:first-child{min-width:120px}
+}

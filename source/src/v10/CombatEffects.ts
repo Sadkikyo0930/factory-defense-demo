@@ -29,7 +29,11 @@ export class CombatEffects {
   }else if(stage==='PI'){
    g.lineStyle(3,color,.9).strokeRoundedRect(to.x-45,to.y-48,90,96,10);g.lineStyle(5,0xffefac,.9).lineBetween(to.x-40,to.y-40+((time*110)%80),to.x+40,to.y-40+((time*110)%80));for(let i=0;i<3;i++)g.lineStyle(2,color,.7).lineBetween(x-i*17,y-16,x-i*17+9,y+16);
   }else{
-   for(let i=0;i<5;i++){const xx=x-i*19;g.fillStyle(i%2?0xffcf64:0xff6541,.95-i*.14).fillTriangle(xx+30,y,xx-19,y-17-i*2,xx-10,y+17+i*2);}g.fillStyle(0xfff0af,.95).fillEllipse(x+4,y,35,20);
+   g.fillStyle(0xff5c35,.32).fillEllipse(x-19,y,76,32);
+   g.fillStyle(0xff6135,.94).fillCircle(x,y,18);
+   g.fillStyle(0xffc14e,.94).fillCircle(x+5,y,12);
+   g.fillStyle(0xfff1ae,.95).fillCircle(x+9,y-2,7);
+   for(let i=0;i<4;i++)g.fillStyle(0xffa540,.8-i*.16).fillCircle(x-19-i*13,y+Math.sin(time*20+i)*11,7-i);
   }
  }
  burst(stage:Step,x:number,y:number,age:number,shield=false){const life=shield?.48:.28;if(age<0||age>life)return;const g=this.g,p=age/life,color=colors[stage],r=18+p*(shield?95:54);g.lineStyle(shield?5:3,color,(1-p)*.9).strokeCircle(x,y,r);if(shield)g.lineStyle(3,0xe7faff,(1-p)*.7).strokeEllipse(x,y,r*2.3,r*.8);g.fillStyle(color,(1-p)*(shield?.19:.3)).fillCircle(x,y,r*.65);if(age<.09)g.fillStyle(0xffffff,(1-age/.09)*.8).fillCircle(x,y,shield?35:23);
