@@ -1,3 +1,7 @@
+# V1.0 元素维修防线 · 独立验收候选
+
+当前默认入口已升级 V1.0；旧车间保留在 `?legacy`。完整规则、运行方式与边界见 [V10-IMPLEMENTATION.md](V10-IMPLEMENTATION.md)。本分支未合并 main、未发布 Pages。以下为保留的历史说明与测试记录。
+
 # 人员到岗派工验收候选（V0.7.1）
 
 本轮公共 WIP、公平派工、调岗暂停/恢复、待命回派及测试见 [STAFFED-DISPATCH.md](STAFFED-DISPATCH.md)。基线为上一轮格式修复提交 4f3dccd；保留独立分支，未合并或发布。推荐运行 `npm run test:production` 和 `npm run test:report`。真实帆软/公司电脑/完整 Excel COM 仍待实机验收。

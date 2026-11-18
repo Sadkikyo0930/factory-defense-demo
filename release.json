@@ -1,8 +1,1 @@
-{
-  "version": "V0.7.1 browser report diagnostics",
-  "sourceCommit": "d0b6dcd80c9887e15340307837998cf5065309da",
-  "buildTarget": "chrome109",
-  "realCompanyPC": false,
-  "actualFineReport": false,
-  "fullExcelCOM": false
-}
+{"version":"V1.0 lane battle","sourceCommit":"7e740f2de49c682f4478e872f1da2a6313108e20","buildTarget":"chrome109"}

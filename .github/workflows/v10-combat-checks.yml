@@ -1,0 +1,36 @@
+name: V10 combat visual candidate verification
+on:
+  push:
+    branches: [feature/v10-combat-polish]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - run: npm ci
+      - name: Preserve all production and scoring behavior
+        run: |
+          mkdir -p artifacts/v10-combat
+          npm run test:v10 | tee artifacts/v10-combat/engine.log
+          npm run test:v10:presentation | tee artifacts/v10-combat/presentation.log
+          python3 tests/fixtures/v10/test_scoring_v10.py | tee artifacts/v10-combat/reference.log
+          npm run test:report | tee artifacts/v10-combat/report.log
+          npm run test:production | tee artifacts/v10-combat/legacy-model.log
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v10-combat-build-and-tests
+          path: |
+            source/dist/
+            source/artifacts/v10-combat/
