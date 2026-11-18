@@ -5,7 +5,7 @@ import {projectBattle,squadState,Squad,hasOperator} from './presentation';
 import {CombatEffects} from './CombatEffects';
 const army:Record<string,[number,number]>={REMOVE:[100,210],TAPE:[275,210],BD:[450,210],UV:[100,410],PEEL:[275,410],POL:[450,410],BUBBLE:[100,610],BLACK:[275,610],FILM:[450,610],PI:[190,805],VI:[395,805]};
 const names:Record<Kind,string>={BD:'BD 装甲怪',POL:'POL 薄膜怪',FILM:'覆膜怪',REVIEW:'过判幻影',UNKNOWN:'未分型待检'};
-interface Actor {stage:Step;body:Phaser.GameObjects.Container;sprites:Map<string,{sprite:Phaser.GameObjects.Sprite;x:number;scale:number}>;}
+interface Actor {stage:Step;body:Phaser.GameObjects.Container;sprites:Map<string,{sprite:Phaser.GameObjects.Sprite;x:number;scale:number}>;operator?:Phaser.GameObjects.Image;}
 interface Enemy {squad:Squad;root:Phaser.GameObjects.Container;body:Phaser.GameObjects.Image;hp:Phaser.GameObjects.Rectangle;hpFrame:Phaser.GameObjects.Rectangle;name:Phaser.GameObjects.Text;stageLabel:Phaser.GameObjects.Text;shadow:Phaser.GameObjects.Ellipse;shield:Phaser.GameObjects.Ellipse;x:number;y:number;lastHit:number;}
 interface Burst {stage:Step;x:number;y:number;at:number;shield:boolean;}
 export class CombatView {
@@ -32,10 +32,15 @@ export class CombatView {
    const group=s.add.container(x,y);
    const sprites=new Map<string,{sprite:Phaser.GameObjects.Sprite;x:number;scale:number}>();
    const deployed=formation[stage]||[];
+   let operator:Phaser.GameObjects.Image|undefined;
    if(stage==='BUBBLE'){
-    group.add(s.add.ellipse(0,39,100,31,0x312566,.75).setStrokeStyle(3,color,.8));
-    group.add(s.add.circle(0,6,35,color,.12).setStrokeStyle(2,color,.58));
-    group.add(this.text(0,6,'雷',34,'#d8baff'));
+    group.add(s.add.ellipse(0,65,90,20,0x312566,.75).setStrokeStyle(2,color,.8));
+    if(this.session.bubbleOperatorDeployed){
+     operator=s.add.image(0,64,'v10-bubble-operator').setOrigin(.5,1);
+     operator.setScale(Math.min(119/operator.width,153/operator.height));
+     if(this.session.scenario.disabled.includes('BUBBLE-1'))operator.setAlpha(.45);
+     group.add(operator);
+    }
    }
    for(const [index,slot] of deployed.entries()){
     const offset=(index-(deployed.length-1)/2)* (deployed.length===4?40:46);
@@ -49,7 +54,7 @@ export class CombatView {
    if(stage!=='BUBBLE'&&!deployed.length)group.add(s.add.ellipse(0,62,65,18,color,.09).setStrokeStyle(2,color,.24));
    group.add(this.text(0,-91,stage==='BUBBLE'?'共享脱泡 · 雷':label[stage]+' · '+element[stage],18,deployed.length||stage==='BUBBLE'?'#dcecff':'#81a0b3'));
    this.root.add(group);
-   this.actors.set(stage,{stage,body:group,sprites});
+   this.actors.set(stage,{stage,body:group,sprites,operator});
   }
   for(const squad of projectBattle(this.session.scenario,this.session.result!.simulation)){if(squad.beats.some(beat=>!hasOperator(beat,this.session.scenario,this.session.formation)))throw Error('动画记录与岗位可用性不一致');const root=s.add.container(),frame=squad.kind==='UNKNOWN'?'REVIEW':squad.kind,body=s.add.image(0,0,'v10-monsters',frame);body.setScale(137/body.width);const shadow=s.add.ellipse(0,55,104,19,0x030d1d,.65),shield=s.add.ellipse(0,-3,127,126,0x8de9ff,.06).setStrokeStyle(2,0xb9ebff,.4),name=this.text(0,-108,names[squad.kind],18),stageLabel=this.text(0,-87,label[squad.initialStage],16),hpFrame=s.add.rectangle(0,-69,108,11,0x07152c,.94).setStrokeStyle(1,0x91b9cf,.8),hp=s.add.rectangle(-51,-69,102,7,colors[squad.initialStage]).setOrigin(0,.5);
    root.add([shadow,shield,body,name,stageLabel,hpFrame,hp]);this.root.add(root);this.enemies.push({squad,root,body,shadow,shield,name,stageLabel,hpFrame,hp,x:1680,y:207+squad.lane*188,lastHit:-Infinity});
@@ -89,7 +94,14 @@ export class CombatView {
     if(unit.sprite.anims.currentAnim?.key!==key)unit.sprite.play(key);
    }
    const lightning=stagePulse.get('BUBBLE-1')||0;
-   if(actor.stage==='BUBBLE'&&lightning>.1)this.gfx.fillStyle(colors.BUBBLE,lightning*.25).fillCircle(actor.body.x,actor.body.y+6,42);
+   if(actor.operator){
+    actor.operator.x=lightning*9;
+    actor.operator.setAngle(-lightning*7);
+    if(lightning>.1){
+     actor.operator.setTint(0xe8d0ff);
+     this.gfx.fillStyle(colors.BUBBLE,lightning*.25).fillCircle(actor.body.x+29,actor.body.y+4,24);
+    }else actor.operator.clearTint();
+   }
   }
   this.bursts=this.bursts.filter(b=>time-b.at<(b.shield?.48:.28)).slice(-18);for(const burst of this.bursts)this.fx.burst(burst.stage,burst.x,burst.y,time-burst.at,burst.shield);this.telemetry.maxActiveEffects=Math.max(this.telemetry.maxActiveEffects,activeEffects+this.bursts.length);
  }

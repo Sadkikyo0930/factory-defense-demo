@@ -1,0 +1,48 @@
+name: Build V10 test site release
+on:
+  push:
+    branches: [release/v10-lane-preview]
+permissions:
+  contents: write
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify base and tag the rollback
+        shell: bash
+        run: |
+          git fetch origin main
+          test "$(git rev-parse FETCH_HEAD)" = "e6cf4968aad7a2a91d91e955fa10f7649f1a3f11"
+          git tag backup/before-v10-lane-preview-20261119 "e6cf4968aad7a2a91d91e955fa10f7649f1a3f11"
+          git push origin refs/tags/backup/before-v10-lane-preview-20261119
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Install and validate the release
+        working-directory: source
+        shell: bash
+        run: |
+          npm ci
+          npm run test:v10
+          npm run test:v10:presentation
+          npm run test:report
+          npm run test:production
+          npm run build
+      - name: Package for the existing GitHub Pages root
+        shell: bash
+        run: |
+          cp -a source/dist/assets/. assets/
+          mkdir -p v10
+          cp -a source/dist/v10/. v10/
+          cp source/dist/index.html index.html
+          printf '%s\n' '{"version":"V1.0 lane battle","sourceCommit":"7e740f2de49c682f4478e872f1da2a6313108e20","buildTarget":"chrome109"}' > release.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets v10 index.html release.json
+          git commit -m 'build: verified V1.0 test site payload'
+          git push origin HEAD:refs/heads/release/v10-lane-preview

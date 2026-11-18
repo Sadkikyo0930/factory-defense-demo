@@ -14,6 +14,7 @@ export class Battlefield extends Phaser.Scene {
  units:Phaser.GameObjects.Sprite[]=[];monsters:MonsterView[]=[];armyLayer!:Phaser.GameObjects.Container;world!:Phaser.GameObjects.Container;
  constructor(session:BattleSession){super('v10-battlefield');this.session=session;}
  preload(){recordRuntime('phase','V1.0 2D资源加载');this.load.image('v10-hall','art/workshop.png');this.load.image('v10-monsters','v10/monsters-atlas.png');
+  this.load.image('v10-bubble-operator','v10/bubble-operator.png');
   for(const key of new Set(Object.values(assets)))for(const state of ['idle','work'])this.load.spritesheet('v10-'+key+'-'+state,'v06/sheets/'+key+'_'+state+'.png',{frameWidth:160,frameHeight:220});
   this.load.on('loaderror',(f:Phaser.Loader.File)=>runtimeError('V1.0资源加载失败：'+f.key));
  }
@@ -40,7 +41,22 @@ export class Battlefield extends Phaser.Scene {
  resize(){this.combat?.resize();if(!this.world)return;const scale=Math.min(this.scale.width/1160,this.scale.height/620);this.world.setScale(scale).setPosition((this.scale.width-1160*scale)/2,(this.scale.height-620*scale)/2);}
  refresh(){if(!this.armyLayer||this.session.phase!=='setup')return;this.combat?.hide();this.world?.setVisible(true);this.armyLayer.removeAll(true);this.units=[];this.monsters=[];const formation=this.session.formation;
   for(const stage of towers){const [x,y]=positions[stage],color=colors[stage],head=this.text(x,y-67,label[stage]+' · '+element[stage],16);this.armyLayer.add(head);
-   if(stage==='BUBBLE'){this.armyLayer.add([this.add.ellipse(x,y+13,78,27,0x322857,.8).setStrokeStyle(2,color,.8),this.text(x,y-12,'雷',28,'#dec0ff')]);continue;}
+   if(stage==='BUBBLE'){
+    const deployed=this.session.bubbleOperatorDeployed;
+    const pad=this.add.ellipse(x,y+26,66,24,0x322857,.8).setStrokeStyle(2,color,.8).setInteractive({useHandCursor:true});
+    pad.on('pointerdown',()=>{
+     try{
+      if(!deployed&&this.selected!=='BUBBLE')throw Error('请先选择左侧的脱泡角色');
+      this.session.setBubbleOperator(!deployed);
+      this.refresh();
+      this.onChange();
+     }catch(error){this.onError(error);}
+    });
+    this.armyLayer.add(pad);
+    if(deployed)this.armyLayer.add(this.fitImage(x,y+25,'v10-bubble-operator',70,87).setOrigin(.5,1));
+    else this.armyLayer.add(this.text(x,y+26,'+',18,'#dec0ff'));
+    continue;
+   }
    const count=stageSlots(stage,this.session.scenario);for(let n=1;n<=count;n++){const offset=(n-(count+1)/2)*30,sx=x+offset,occupied=(formation[stage]||[]).includes(n),disabled=this.session.scenario.disabled.includes(stage+'-'+n);
     const pad=this.add.ellipse(sx,y+24,29,13,occupied?color:0x25435f,occupied?.65:.8).setStrokeStyle(1,disabled?0xe1747b:color,.65);this.armyLayer.add(pad);
     if(occupied){const key='v10-'+assets[stage]+'-idle',sprite=this.add.sprite(sx,y-12,key);sprite.setScale((count===1?87:count===2?73:62)/220);sprite.play(key);this.units.push(sprite);this.armyLayer.add(sprite);}

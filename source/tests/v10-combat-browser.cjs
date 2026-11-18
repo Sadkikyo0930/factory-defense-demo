@@ -4,8 +4,19 @@ const base=process.env.QA_BASE_URL||'http://127.0.0.1:4190/',out=path.resolve(pr
  const p=await browser.newPage({viewport:{width:1280,height:720}}),errors=[],failed=[];p.on('pageerror',e=>errors.push(e.message));p.on('console',m=>{if(m.type()==='error')errors.push(m.text());});p.on('response',r=>{if(r.status()>=400)failed.push({url:r.url(),status:r.status()});});
  await p.goto(base+'?qa');await p.waitForFunction(()=>window.v10Scene?.ready);
  // Fill every real staff slot through user controls; a further click cannot add phantom capacity.
+ const bubbleOnField=()=>p.evaluate(()=>window.v10Scene.armyLayer.list.some(o=>o.texture?.key==='v10-bubble-operator'));
+ assert.equal(await bubbleOnField(),false);
+ const bubble=p.locator('[data-select=BUBBLE]');
+ await bubble.click();
+ assert.equal(await bubbleOnField(),false);
+ const portrait=await bubble.boundingBox();
+ const target=await p.evaluate(()=>{const w=window.v10Scene.world,r=window.v10Game.canvas.getBoundingClientRect();return {x:r.left+w.x+75*w.scaleX,y:r.top+w.y+435*w.scaleY};});
+ await p.mouse.move(portrait.x+portrait.width/2,portrait.y+portrait.height/2);await p.mouse.down();await p.mouse.move(target.x,target.y,{steps:10});await p.mouse.up();
+ assert.equal(await bubbleOnField(),true);assert.equal(await p.locator('#staff-count').innerText(),'0 / 20');
+ assert(await p.locator('[data-plus=BUBBLE]').isDisabled());
+ await p.locator('[data-minus=BUBBLE]').click();assert.equal(await bubbleOnField(),false);
  const all=await p.locator('[data-plus]').evaluateAll(nodes=>nodes.map(n=>n.dataset.plus));for(const stage of all){const add=p.locator(`[data-plus=${stage}]`);while(await add.isEnabled())await add.click();assert(await add.isDisabled());}
- const deployed=await p.evaluate(()=>Object.values(window.v10Session.formation).reduce((n,a)=>n+a.length,0));assert.equal(deployed,18);assert.equal(await p.locator('[data-plus=BUBBLE]').count(),0);
+ const deployed=await p.evaluate(()=>Object.values(window.v10Session.formation).reduce((n,a)=>n+a.length,0));assert.equal(deployed,18);
  const minus=await p.locator('[data-minus=REMOVE]');
  await minus.click();assert.equal(await p.locator('#count-REMOVE').innerText(),'2');assert.equal(await p.locator('#count-TAPE').innerText(),'1');
  await p.locator('#clear-formation').click();
@@ -24,10 +35,12 @@ const base=process.env.QA_BASE_URL||'http://127.0.0.1:4190/',out=path.resolve(pr
  await p.locator('.roster').evaluate(el=>el.scrollTop=0);
  const roster=await p.locator('.roster').boundingBox(), plus=await p.locator('[data-plus=REMOVE]').boundingBox();
  assert(roster.width>=320&&roster.width<=350);assert(plus.width>=44&&plus.height>=44);
- assert.equal(await p.locator('.element-row').count(),10);
+ assert.equal(await p.locator('.element-row').count(),11);
  assert.equal(await p.evaluate(()=>window.v10Game.textures.getTextureKeys().some(k=>k.startsWith('v10-eq-'))),false);
  await p.screenshot({path:path.join(out,'01-prebattle.png')});const original=await p.evaluate(()=>JSON.stringify(window.v10Session.scenario));
  const begin=Date.now();await p.locator('#battle-start').click();await p.waitForFunction(()=>document.body.dataset.phase==='battle');assert.equal(await p.locator('.roster').isVisible(),false);assert.equal(await p.locator('.mission').isVisible(),false);assert(await p.locator('#combat-hud').isVisible());
+ assert(await p.evaluate(()=>Boolean(window.v10Scene.combat.actors.get('BUBBLE').operator)));
+ assert.equal(await p.evaluate(()=>{try{window.v10Session.setBubbleOperator(false);return false;}catch{return window.v10Session.bubbleOperatorDeployed;}}),true);
  const before=await p.evaluate(()=>window.v10Scene.combat.debug);await p.waitForFunction(()=>window.v10Scene.combat.debug.time>=.49);const entry=await p.evaluate(()=>window.v10Scene.combat.debug);await p.screenshot({path:path.join(out,'02-monster-entry.png')});
  assert(entry.enemies.some(e=>e.wave===0&&e.visible));assert(entry.enemies.every(e=>e.wave===0||!e.visible));assert(entry.enemies.some(e=>e.visible)&&entry.enemies.some(e=>!e.visible),'staggered waves must not spawn all at once');
  const entryPositions=entry.enemies.map(e=>({id:e.id,x:e.x,visible:e.visible}));

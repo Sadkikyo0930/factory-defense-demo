@@ -2,12 +2,20 @@ const {chromium}=require('playwright'),assert=require('assert'),fs=require('fs')
 const base=process.env.QA_BASE_URL||'http://127.0.0.1:4190/',out=path.resolve(process.env.QA_OUTPUT||'artifacts/v10');fs.mkdirSync(out,{recursive:true});
 (async()=>{const browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||chromium.executablePath()});try{
  const page=await browser.newPage({viewport:{width:1280,height:720}}),errors=[],failed=[],uploads=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)failed.push({url:r.url(),status:r.status()});});page.on('request',r=>{if(r.method()!=='GET')uploads.push(r.method());});
- await page.goto(base+'?qa');await page.waitForFunction(()=>window.v10Scene?.ready);assert((await page.title()).includes('V1.0'));assert.equal(await page.locator('.element-row').count(),10);assert.equal(await page.locator('[data-plus=FA]').count(),0);assert.equal(await page.locator('[data-plus=BUBBLE]').count(),0);assert.deepEqual(await page.evaluate(()=>window.v10Scene.monsters.map(m=>m.body.list[1].frame.name)),['BD','POL','FILM','REVIEW']);
+ await page.goto(base+'?qa');await page.waitForFunction(()=>window.v10Scene?.ready);assert((await page.title()).includes('V1.0'));assert.equal(await page.locator('.element-row').count(),11);assert.equal(await page.locator('[data-plus=FA]').count(),0);assert.equal(await page.locator('[data-plus=BUBBLE]').count(),1);assert.deepEqual(await page.evaluate(()=>window.v10Scene.monsters.map(m=>m.body.list[1].frame.name)),['BD','POL','FILM','REVIEW']);
  for(const stage of ['REMOVE','TAPE','BD','UV','PEEL','BLACK','FILM','PI'])await page.locator(`[data-plus=${stage}]`).click();
  async function position(x,y){return page.evaluate(({x,y})=>{const s=window.v10Scene,r=window.v10Game.canvas.getBoundingClientRect();return {x:r.left+s.world.x+x*s.world.scaleX,y:r.top+s.world.y+y*s.world.scaleY};},{x,y});}
  await page.locator('[data-select=POL]').scrollIntoViewIfNeeded();
  const card=await page.locator('[data-select=POL]').boundingBox(),target=await position(345,290);await page.mouse.move(card.x+card.width/2,card.y+card.height/2);await page.mouse.down();await page.mouse.move(target.x,target.y,{steps:12});await page.mouse.up();assert.deepEqual(await page.evaluate(()=>window.v10Session.formation.POL),[1]);
- await page.locator('[data-select=VI]').click();for(const x of [295,355]){const p=await position(x,577);await page.mouse.click(p.x,p.y);await page.waitForTimeout(100);}assert.deepEqual(await page.evaluate(()=>window.v10Session.formation.VI),[2,4]);
+ await page.locator('[data-select=VI]').click();
+ for(const [slot,x] of [[2,295],[4,355]]){
+  const p=await position(x,577);
+  await page.mouse.move(p.x,p.y);
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await page.mouse.click(p.x,p.y,{delay:50});
+  await page.waitForFunction(slot=>window.v10Session.formation.VI?.includes(slot),slot);
+ }
+ assert.deepEqual(await page.evaluate(()=>window.v10Session.formation.VI),[2,4]);
  const setup=await page.evaluate(()=>({scenario:JSON.stringify(window.v10Session.scenario),formation:window.v10Session.formation}));
  assert(await page.locator('#battle-start').isVisible());const startBox=await page.locator('#battle-start').boundingBox();assert(startBox.y+startBox.height<=720);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.screenshot({path:path.join(out,'01-prebattle-1280x720.png')});

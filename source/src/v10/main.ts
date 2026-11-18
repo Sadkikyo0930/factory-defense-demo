@@ -23,9 +23,24 @@ const say=(e:unknown)=>{$('notice').textContent=e instanceof Error?e.message:Str
 const choice=rendererChoice(new URLSearchParams(location.search).get('renderer')==='canvas');
 const game=new Phaser.Game({canvas:choice.canvas,context:choice.context as unknown as CanvasRenderingContext2D,type:choice.webgl?Phaser.WEBGL:Phaser.CANVAS,parent:'game',backgroundColor:'#0a1d3a',scene,scale:{mode:Phaser.Scale.RESIZE,width:$('game').clientWidth,height:$('game').clientHeight},fps:{target:30,limit:30,smoothStep:true},render:{antialias:true,powerPreference:'low-power'}});
 function assigned(){return Object.values(session.formation).reduce((n,a)=>n+(a?.length||0),0);}
-function change(stage:Step,delta:number){try{const list=session.formation[stage]||[],n=delta>0?Array.from({length:stageSlots(stage,session.scenario)},(_,i)=>i+1).find(i=>!list.includes(i)):list[list.length-1];if(n===undefined)throw Error(delta>0?'该岗位已无可用设备槽':'该岗位尚未部署');session.setSlot(stage,n,delta>0);scene.refresh();refresh();}catch(e){say(e);}}
-for(const stage of towers.filter(stage=>stage!=='BUBBLE')){const row=document.createElement('div');row.className='element-row';row.dataset.stage=stage;row.classList.toggle('selected',stage===scene.selected);const color='#'+colors[stage].toString(16).padStart(6,'0');row.style.setProperty('--element',color);
- row.innerHTML=`<button class="element-select" data-select="${stage}" aria-pressed="${stage===scene.selected}"><span class="element-glyph">${element[stage]}</span>${assets[stage]?`<img src="v05/roles/sprites/${assets[stage]}.png" alt="">`:''}<span>${label[stage]}</span></button><button data-minus="${stage}" aria-label="撤下${label[stage]}">−</button><strong id="count-${stage}">0</strong><button data-plus="${stage}" aria-label="部署${label[stage]}">＋</button>`;
+function change(stage:Step,delta:number){
+ try{
+  if(stage==='BUBBLE'){
+   if(session.bubbleOperatorDeployed===(delta>0))throw Error(delta>0?'脱泡角色已部署':'脱泡角色尚未部署');
+   session.setBubbleOperator(delta>0);
+  }else{
+   const list=session.formation[stage]||[];
+   const slot=delta>0?Array.from({length:stageSlots(stage,session.scenario)},(_,i)=>i+1).find(i=>!list.includes(i)):list[list.length-1];
+   if(slot===undefined)throw Error(delta>0?'该岗位已无可用设备槽':'该岗位尚未部署');
+   session.setSlot(stage,slot,delta>0);
+  }
+  scene.refresh();
+  refresh();
+ }catch(e){say(e);}
+}
+for(const stage of towers){const row=document.createElement('div');row.className='element-row';row.dataset.stage=stage;row.classList.toggle('selected',stage===scene.selected);const color='#'+colors[stage].toString(16).padStart(6,'0');row.style.setProperty('--element',color);
+ const portrait=stage==='BUBBLE'?'v10/bubble-operator.png':`v05/roles/sprites/${assets[stage]}.png`;
+ row.innerHTML=`<button class="element-select" data-select="${stage}" aria-pressed="${stage===scene.selected}"><span class="element-glyph">${element[stage]}</span><img src="${portrait}" alt=""><span>${label[stage]}</span></button><button data-minus="${stage}" aria-label="撤下${label[stage]}">−</button><strong id="count-${stage}">0</strong><button data-plus="${stage}" aria-label="部署${label[stage]}">＋</button>`;
  const button=row.querySelector<HTMLButtonElement>('[data-select]')!;const select=()=>{if(session.phase!=='setup')return;scene.selected=stage;document.querySelectorAll('.element-row').forEach(e=>{const selected=(e as HTMLElement).dataset.stage===stage;e.classList.toggle('selected',selected);e.querySelector('[data-select]')?.setAttribute('aria-pressed',String(selected));});};button.onclick=select;
  let drag:{x:number;y:number}|undefined;button.onpointerdown=e=>{if(session.phase!=='setup')return;select();drag={x:e.clientX,y:e.clientY};button.setPointerCapture(e.pointerId);};button.onpointerup=e=>{if(!drag)return;const moved=Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>12;drag=undefined;if(!moved)return;try{if(session.phase!=='setup')throw Error('开战后布阵已锁定');const rect=game.canvas.getBoundingClientRect(),wx=(e.clientX-rect.left-scene.world.x)/scene.world.scaleX,wy=(e.clientY-rect.top-scene.world.y)/scene.world.scaleY;const positions:Record<string,[number,number]>={REMOVE:[75,145],TAPE:[210,145],BD:[345,145],UV:[75,290],PEEL:[210,290],POL:[345,290],BUBBLE:[75,435],BLACK:[210,435],FILM:[345,435],PI:[145,550],VI:[310,550]};const target=Object.entries(positions).find(([,p])=>Math.abs(p[0]-wx)<65&&Math.abs(p[1]-wy)<65);if(!target||target[0]!==stage)throw Error('请拖到对应元素的岗位阵地');change(stage,1);}catch(err){say(err);}};
  row.querySelector<HTMLButtonElement>('[data-plus]')?.addEventListener('click',()=>change(stage,1));row.querySelector<HTMLButtonElement>('[data-minus]')?.addEventListener('click',()=>change(stage,-1));$('element-roster').append(row);
@@ -36,17 +51,19 @@ function refresh(){const s=session.scenario,phase=session.phase;document.body.da
  $('phase-label').textContent=phase==='setup'?'① 战前布阵':phase==='battle'?'② 自动战斗 · 已锁定':'③ 本班结算';
  for(const b of document.querySelectorAll<HTMLButtonElement>('.roster button,#clear-formation,#task-settings,#import-report,#battle-start'))b.disabled=phase!=='setup';
  const formation=session.formation, budgetReached=assigned()>=s.budget;
- for(const stage of towers.filter(stage=>stage!=='BUBBLE')){
-  const count=formation[stage]?.length||0,full=count>=stageSlots(stage,s);
+ for(const stage of towers){
+  const isBubble=stage==='BUBBLE';
+  const count=isBubble?Number(session.bubbleOperatorDeployed):formation[stage]?.length||0;
+  const full=count>=stageSlots(stage,s), blockedByBudget=!isBubble&&budgetReached;
   const plus=document.querySelector<HTMLButtonElement>('[data-plus='+stage+']')!;
   const minus=document.querySelector<HTMLButtonElement>('[data-minus='+stage+']')!;
   $('count-'+stage).textContent=String(count);
-  plus.disabled=phase!=='setup'||full||budgetReached;
+  plus.disabled=phase!=='setup'||full||blockedByBudget;
   minus.disabled=phase!=='setup'||count===0;
-  const reason=full?'工位已满':budgetReached?'预算已满':'可部署';
+  const reason=full?'工位已满':blockedByBudget?'预算已满':isBubble?'部署角色，不计入人员预算':'可部署';
   plus.title=reason;
   plus.setAttribute('aria-label',label[stage]+' · '+reason);
-  plus.closest('.element-row')?.setAttribute('data-limit',full?'工位满':budgetReached?'预算满':'');
+  plus.closest('.element-row')?.setAttribute('data-limit',full?'工位满':blockedByBudget?'预算满':'');
  }
  $('open-result').hidden=phase!=='result';$('battle-start').hidden=phase!=='setup';$('skip-battle').hidden=phase!=='battle';$('retry-battle').hidden=phase!=='result';
  if(phase==='battle'){$('combat-clock').textContent='00:'+Math.max(0,5-Math.floor(scene.progress*5)).toString().padStart(2,'0');$('combat-caption').textContent=scene.progress<.2?'首波来袭':scene.progress<.5?'守住阵地':scene.progress<.88?'增援突进':'战斗收尾';$('battle-clock').textContent='00:'+Math.max(0,5-Math.floor(scene.progress*5)).toString().padStart(2,'0');$('clock-fill').style.width=(100*(1-scene.progress))+'%';$('clock-title').textContent='10 小时班次可视化';}
