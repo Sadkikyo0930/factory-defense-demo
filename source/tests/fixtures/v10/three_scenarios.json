@@ -1,0 +1,101 @@
+{
+  "version": "v1.0-scoring-60-25-15",
+  "note": "三站简化测试，不是完整十小时引擎，不是正式OUT；默认60/25/15仅建议权重",
+  "unit": "sheets",
+  "duration_hours": 10,
+  "cof_per_sheet": 2,
+  "capacities_per_worker": {
+    "祛除": 170,
+    "贴胶_COF": 800,
+    "BD": 130
+  },
+  "initial_wip": {
+    "祛除": 10,
+    "贴胶": 0,
+    "BD": 20
+  },
+  "independent_in": {
+    "祛除": 30,
+    "贴胶": 0,
+    "BD": 0
+  },
+  "target_closing_wip": {
+    "祛除": 0,
+    "贴胶": 0,
+    "BD": 0
+  },
+  "scenarios": [
+    {
+      "id": "A",
+      "name": "恰好配置",
+      "deployed": {
+        "祛除": 1,
+        "贴胶": 1,
+        "BD": 1
+      },
+      "expected": {
+        "completed": {
+          "祛除": 40,
+          "贴胶": 40,
+          "BD": 60
+        },
+        "closing_wip": {
+          "祛除": 0,
+          "贴胶": 0,
+          "BD": 0
+        },
+        "segment_exit": 60,
+        "redundant": 0,
+        "total_score": 100.0
+      }
+    },
+    {
+      "id": "B",
+      "name": "缺少祛除",
+      "deployed": {
+        "祛除": 0,
+        "贴胶": 1,
+        "BD": 1
+      },
+      "expected": {
+        "completed": {
+          "祛除": 0,
+          "贴胶": 0,
+          "BD": 20
+        },
+        "closing_wip": {
+          "祛除": 40,
+          "贴胶": 0,
+          "BD": 0
+        },
+        "segment_exit": 20,
+        "redundant": 1,
+        "total_score": 57.5
+      }
+    },
+    {
+      "id": "C",
+      "name": "兵力冗余",
+      "deployed": {
+        "祛除": 2,
+        "贴胶": 1,
+        "BD": 2
+      },
+      "expected": {
+        "completed": {
+          "祛除": 40,
+          "贴胶": 40,
+          "BD": 60
+        },
+        "closing_wip": {
+          "祛除": 0,
+          "贴胶": 0,
+          "BD": 0
+        },
+        "segment_exit": 60,
+        "redundant": 2,
+        "total_score": 90.0
+      }
+    }
+  ]
+}

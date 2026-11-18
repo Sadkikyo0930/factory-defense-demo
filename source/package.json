@@ -1,6 +1,6 @@
 {
   "name": "tv-factory-demo",
-  "version": "0.1.0",
+  "version": "1.0.0-candidate",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,9 @@
     "test:v071:browser": "node tests/v071-browser.cjs",
     "test:report-format:browser": "node tests/report-format-browser.cjs",
     "test:production": "node tests/company-model.cjs && node tests/staffed-dispatch.cjs && node tests/v05-model.cjs",
-    "test:dispatch:browser": "node tests/staffed-browser.cjs"
+    "test:dispatch:browser": "node tests/staffed-browser.cjs",
+    "test:v10": "node tests/v10-engine.cjs",
+    "test:v10:browser": "node tests/v10-browser.cjs"
   },
   "dependencies": {
     "phaser": "3.80.1",
