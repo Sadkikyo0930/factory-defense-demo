@@ -1,5 +1,5 @@
 export type ReportFormatKind='xlsx-zip'|'xlsb-zip'|'zip-other'|'xls-ole'|'ole-other'|'xls-biff'|'encrypted-office'|'html'|'spreadsheet-xml'|'xml-other'|'json'|'unknown'|'empty';
-export interface FormatDiagnostic{kind:ReportFormatKind;bytes:number;expectedBytes?:number;transferMatches?:boolean;extension:string;encoding:string;prefixBytes:number;container:'ZIP'|'OLE'|'BIFF'|'text'|'unknown';markers:string[];readable:boolean;}
+export interface FormatDiagnostic{headerHex:string;kind:ReportFormatKind;bytes:number;expectedBytes?:number;transferMatches?:boolean;extension:string;encoding:string;prefixBytes:number;container:'ZIP'|'OLE'|'BIFF'|'text'|'unknown';markers:string[];readable:boolean;}
 export interface OleMarkers{workbook:boolean;encryptedPackage:boolean;encryptionInfo:boolean;filePass:boolean;}
 export interface InspectedReport{diagnostic:FormatDiagnostic;binary:ArrayBuffer;text?:string;}
 const signature=(bytes:Uint8Array,offset:number,values:number[])=>values.every((v,i)=>bytes[offset+i]===v);
@@ -19,7 +19,8 @@ function zipMarkers(bytes:Uint8Array):string[]{
 }
 export function inspectReportFormat(buffer:ArrayBuffer,filename:string,inspectOle?:(bytes:Uint8Array)=>OleMarkers,expectedBytes?:number):InspectedReport{
  const bytes=new Uint8Array(buffer),extension=(/\.([a-z0-9]+)$/i.exec(filename)?.[1]||'无扩展名').toLowerCase();
- const d:FormatDiagnostic={kind:'unknown',bytes:bytes.length,extension,encoding:'binary/未确定',prefixBytes:0,container:'unknown',markers:[],readable:false};
+ // Fixed 16-byte original header only: never decode or log workbook body as diagnostics.
+ const d:FormatDiagnostic={headerHex:Array.from(bytes.subarray(0,16),v=>v.toString(16).padStart(2,'0').toUpperCase()).join(' '),kind:'unknown',bytes:bytes.length,extension,encoding:'binary/未确定',prefixBytes:0,container:'unknown',markers:[],readable:false};
  if(expectedBytes!==undefined){d.expectedBytes=expectedBytes;d.transferMatches=bytes.length===expectedBytes;}
  if(!bytes.length){d.kind='empty';return {diagnostic:d,binary:buffer};}
  // A BIFF BOF begins with 0x09 (also TAB). Recognize binary before trimming.
@@ -41,11 +42,11 @@ export function inspectReportFormat(buffer:ArrayBuffer,filename:string,inspectOl
  }
  d.encoding=encoding+((signature(bytes,0,[0xef,0xbb,0xbf])||signature(bytes,0,[0xff,0xfe])||signature(bytes,0,[0xfe,0xff]))?' / BOM':'');
  const probe=head.replace(/^\uFEFF/,'').replace(/^\s+/,'');
- if(extension==='json'||/^[\[{]/.test(probe)){d.kind='json';d.container='text';d.readable=true;}
+ if(/^[\[{]/.test(probe)){d.kind='json';d.container='text';d.readable=true;}
  else if(/<(?:(?:[a-z0-9_]+):)?Workbook\b/i.test(probe)&&/urn:schemas-microsoft-com:office:spreadsheet/i.test(probe)){d.kind='spreadsheet-xml';d.container='text';d.markers=['SpreadsheetML 2003'];d.readable=true;}
 
  else if(/<(?:!doctype\s+html\b|html\b|table\b)/i.test(probe)){d.kind='html';d.container='text';d.markers=['HTML表格/页面标记'];d.readable=true;} else if(/^<\??[a-z!]/i.test(probe)){d.kind='xml-other';d.container='text';d.markers=['未确认的XML结构'];}
  return {diagnostic:d,binary,text:d.container==='text'?new TextDecoder(encoding).decode(bytes).replace(/^\uFEFF/,'').replace(/^\s+/,''):undefined};
 }
 export const formatLabels:Record<ReportFormatKind,string>={'xlsx-zip':'标准XLSX ZIP','xlsb-zip':'XLSB ZIP','zip-other':'ZIP容器（工作簿待验证）','xls-ole':'XLS OLE','ole-other':'其他/损坏OLE','xls-biff':'原始BIFF XLS','encrypted-office':'加密Office/加密容器','html':'HTML兼容文件','spreadsheet-xml':'Excel XML 2003兼容文件','xml-other':'未识别的XML兼容文件','json':'JSON中转文件','unknown':'未知格式','empty':'空文件'};
-export function formatSummary(d:FormatDiagnostic){return `${formatLabels[d.kind]}；${d.bytes}字节；扩展名.${d.extension}；容器${d.container}；编码${d.encoding}；前置BOM/空白${d.prefixBytes}字节；标记：${d.markers.join('、')||'无'}${d.transferMatches===false?'；读取/传输长度不一致':''}`;}
+export function formatSummary(d:FormatDiagnostic){return `格式：${formatLabels[d.kind]}；文件头 HEX（最多16字节）：${d.headerHex||'空'}${d.transferMatches===false?'；读取/传输长度不一致':''}`;}

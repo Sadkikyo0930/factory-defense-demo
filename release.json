@@ -1,6 +1,6 @@
 {
-  "version": "V0.7.1 staffed dispatch",
-  "sourceCommit": "5199d9fbe4144ffd0a7bfe4fefadd7286bb6f446",
+  "version": "V0.7.1 browser report diagnostics",
+  "sourceCommit": "d0b6dcd80c9887e15340307837998cf5065309da",
   "buildTarget": "chrome109",
   "realCompanyPC": false,
   "actualFineReport": false,
