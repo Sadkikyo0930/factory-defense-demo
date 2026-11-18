@@ -1,3 +1,4 @@
+import {CombatView} from './CombatView';
 import Phaser from 'phaser';
 import {BattleSession} from './session';
 import {Step,Kind,towers,stages,label,element,colors,assets,equipment,stageSlots,route} from './spec';
@@ -8,7 +9,7 @@ const kinds:Kind[]=['BD','POL','FILM','REVIEW'];
 const names:Record<Kind,string>={BD:'BD 装甲怪',POL:'POL 薄膜怪',FILM:'覆膜怪',REVIEW:'过判幻影',UNKNOWN:'后段未分型'};
 interface MonsterView {kind:Kind;x:number;body:Phaser.GameObjects.Container;bars:{stage:Step;bar:Phaser.GameObjects.Rectangle;value:Phaser.GameObjects.Text;max:number}[];count:Phaser.GameObjects.Text;}
 export class Battlefield extends Phaser.Scene {
- readonly session:BattleSession;
+ readonly session:BattleSession; combat!:CombatView;
  onChange=()=>{};onFinish=()=>{};onError=(e:unknown)=>{};
  ready=false;selected:Step='REMOVE';startedAt=0;progress=0;fx!:Phaser.GameObjects.Graphics;
  units:Phaser.GameObjects.Sprite[]=[];monsters:MonsterView[]=[];armyLayer!:Phaser.GameObjects.Container;world!:Phaser.GameObjects.Container;
@@ -33,11 +34,11 @@ export class Battlefield extends Phaser.Scene {
   this.world.add(this.text(805,535,'每层对应一道真实工序 · 动画不参与产能计算',13,'#91b4d4'));
   this.armyLayer=this.add.container();this.world.add(this.armyLayer);
   for(const key of new Set(Object.values(assets)))for(const state of ['idle','work'])if(!this.anims.exists('v10-'+key+'-'+state))this.anims.create({key:'v10-'+key+'-'+state,frames:this.anims.generateFrameNumbers('v10-'+key+'-'+state,{start:0,end:state==='idle'?3:5}),frameRate:state==='idle'?3:6,repeat:-1});
-  this.fx=this.add.graphics();this.world.add(this.fx);this.refresh();
+  this.fx=this.add.graphics();this.world.add(this.fx);this.combat=new CombatView(this,this.session);this.refresh();
   this.scale.on('resize',()=>this.resize());this.resize();this.ready=true;recordRuntime('phase','V1.0 战前布阵');runtimeReady();
  }
- resize(){if(!this.world)return;const scale=Math.min(this.scale.width/1160,this.scale.height/620);this.world.setScale(scale).setPosition((this.scale.width-1160*scale)/2,(this.scale.height-620*scale)/2);}
- refresh(){if(!this.armyLayer)return;this.armyLayer.removeAll(true);this.units=[];this.monsters=[];const formation=this.session.formation;
+ resize(){this.combat?.resize();if(!this.world)return;const scale=Math.min(this.scale.width/1160,this.scale.height/620);this.world.setScale(scale).setPosition((this.scale.width-1160*scale)/2,(this.scale.height-620*scale)/2);}
+ refresh(){if(!this.armyLayer||this.session.phase!=='setup')return;this.combat?.hide();this.world?.setVisible(true);this.armyLayer.removeAll(true);this.units=[];this.monsters=[];const formation=this.session.formation;
   for(const stage of towers){const [x,y]=positions[stage],color=colors[stage],head=this.text(x,y-67,label[stage]+' · '+element[stage],13);this.armyLayer.add(head);
    if(stage==='BUBBLE'){const shadow=this.add.ellipse(x,y+15,105,23,0x030a20,.65),im=this.fitImage(x,y-12,'v10-eq-debubble',94,94);this.armyLayer.add([shadow,im,this.text(x,y+42,'唯一机器 · 8片 / 10min',10,'#c1a8ef')]);continue;}
    const count=stageSlots(stage,this.session.scenario);for(let n=1;n<=count;n++){const offset=(n-(count+1)/2)*30,sx=x+offset,occupied=(formation[stage]||[]).includes(n),disabled=this.session.scenario.disabled.includes(stage+'-'+n);
@@ -61,25 +62,7 @@ export class Battlefield extends Phaser.Scene {
   const rate=(1-this.session.scenario.yield[kind])*100;this.armyLayer.add(this.text(x,455,'防御 '+rate.toFixed(0)+'% · 单轮一次判定',11,'#adc7df'));
   this.monsters.push({kind,x,body,bars,count:total});
  }
- start(){this.startedAt=performance.now();this.progress=0;for(const unit of this.units){const key=unit.texture.key.replace(/-idle$/,'-work');unit.play(key);}}
- update(){if(!this.ready)return;if(this.session.phase==='battle'){this.progress=Math.min(1,(performance.now()-this.startedAt)/5000);this.animateBattle(this.progress);if(this.progress>=1){this.session.finish();this.onFinish();}}else if(this.session.phase==='setup')this.fx.clear();}
- animateBattle(progress:number){const result=this.session.result;if(!result)return;const time=progress*36000;this.fx.clear();const completed=result.simulation.timeline.filter(e=>e.time<=time);
-  for(const monster of this.monsters){const failed=completed.filter(e=>e.stage==='VI'&&e.kind===monster.kind).reduce((n,e)=>n+e.failed,0);monster.body.x=monster.x-progress*50;monster.body.y=350+Math.sin(progress*45+monster.x)*3;for(const hp of monster.bars){const done=completed.filter(e=>e.stage===hp.stage&&e.kind===monster.kind).reduce((n,e)=>n+e.count,0),left=Math.max(0,hp.max-done-(hp.stage==='OUT'?failed:0));hp.bar.width=145*(hp.max?left/hp.max:0);hp.value.setText(label[hp.stage]+' '+left);}
-   const done=completed.filter(e=>e.stage==='OUT'&&e.kind===monster.kind).reduce((n,e)=>n+e.count,0);monster.count.setText('击破 '+done+(failed?' · 返修 '+failed:''));if(failed){const x=monster.body.x+55,y=monster.body.y-80;this.fx.lineStyle(2,0xff8eaa,.8).lineBetween(x,y,x+45,y);this.fx.fillStyle(0xff8eaa,.9).fillTriangle(x+48,y,x+38,y-5,x+38,y+5);}}
-  const pulse=performance.now()/180;
-  for(const stage of towers){if(!result.simulation.ledger[stage].processed)continue;const target=this.monsters.find(m=>m.bars.some(h=>canDamage(h.stage,stage))&&this.session.scenario.lots.some(l=>l.kind===m.kind&&route(l).includes(stage)));if(!target)continue;const [sx,sy]=positions[stage],tx=target.body.x,ty=target.body.y,phase=(pulse+towers.indexOf(stage)*.19)%1,x=Phaser.Math.Linear(sx,tx,phase),y=Phaser.Math.Linear(sy-20,ty,phase)-Math.sin(phase*Math.PI)*45,color=colors[stage];this.fx.lineStyle(2,color,.35);this.fx.lineBetween(sx,sy-20,x,y);this.fx.fillStyle(color,.95);
-   if(stage==='REMOVE')for(let j=0;j<3;j++)this.fx.fillTriangle(x+j*9,y-7,x+j*9-6,y+7,x+j*9+6,y+7);
-   else if(stage==='TAPE'){this.fx.lineStyle(3,color);for(let j=0;j<4;j++)this.fx.lineBetween(x-j*10,y+Math.sin(j+pulse)*7,x-(j+1)*10,y+Math.sin(j+1+pulse)*7);}
-   else if(stage==='BD')this.fx.fillTriangle(x+14,y,x-9,y-7,x-9,y+7);
-   else if(stage==='UV'){this.fx.lineStyle(5,color,.65).lineBetween(sx,sy-20,x,y);this.fx.lineStyle(1,0xffffff,.9).lineBetween(sx,sy-20,x,y);}
-   else if(stage==='PEEL')for(let j=0;j<3;j++)this.fx.lineStyle(2,color,.8).strokeCircle(x-j*10,y,6+j*3);
-   else if(stage==='POL')this.fx.fillPoints([{x,y:y-14},{x:x+9,y},{x,y:y+14},{x:x-9,y}],true);
-   else if(stage==='BUBBLE'){this.fx.lineStyle(3,color).beginPath().moveTo(x-24,y).lineTo(x-10,y-13).lineTo(x-13,y+7).lineTo(x+5,y-4).lineTo(x+23,y+10).strokePath();}
-   else if(stage==='BLACK'){this.fx.fillCircle(x,y,13);this.fx.lineStyle(2,0xfba5ff,.7).strokeCircle(x,y,18);}
-   else if(stage==='FILM'){for(let j=0;j<3;j++)this.fx.lineStyle(2,color).strokeCircle(x-j*14,y+Math.sin(j+pulse)*7,9-j*2);}
-   else if(stage==='PI'){this.fx.lineStyle(2,color).strokeRect(x-10,y-13,20,26);this.fx.lineStyle(3,0xffffff).lineBetween(x-6,y,x+6,y);}
-   else{this.fx.fillTriangle(x+15,y,x-9,y-13,x-3,y);this.fx.fillTriangle(x+15,y,x-3,y,x-9,y+13);}
-  }
-  this.onChange();
- }
+ start(){this.startedAt=performance.now();this.progress=0;this.world.setVisible(false);this.combat.start();}
+ update(){if(!this.ready||this.session.phase!=='battle')return;this.progress=Math.min(1,(performance.now()-this.startedAt)/5000);this.animateBattle(this.progress);if(this.progress>=1){this.session.finish();this.onFinish();}}
+ animateBattle(progress:number){this.combat.render(Math.max(0,Math.min(5,progress*5)));this.onChange();}
 }
