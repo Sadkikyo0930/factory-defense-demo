@@ -1,11 +1,11 @@
-name: V071 staffed dispatch release preflight
+name: V071 browser report diagnostics release preflight
 on:
   push:
-    branches: [release/v071-staffed-dispatch]
+    branches: [release/v071-browser-import]
 permissions:
   contents: write
 concurrency:
-  group: staffed-dispatch-release
+  group: browser-import-release
   cancel-in-progress: false
 jobs:
   verify-build-payload:
@@ -18,10 +18,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          old=9503da474b7c37ecf9b964860daf37c784f9e73a
+          old=c86ee6ccbd2caa8dc4579d5da8e2f51b7e8d40f4
           git fetch origin main
           test "$(git rev-parse FETCH_HEAD)" = "$old"
-          tag=backup/v071-before-staffed-20261118
+          tag=backup/v071-before-browser-import-20261118
           if git show-ref --verify --quiet "refs/tags/$tag"; then
             test "$(git rev-list -n 1 "$tag")" = "$old"
           else
@@ -53,18 +53,18 @@ jobs:
           mkdir -p assets
           cp -a source/dist/assets/. assets/
           cp source/dist/index.html index.html
-          node -e "require('fs').writeFileSync('release.json',JSON.stringify({version:'V0.7.1 staffed dispatch',sourceCommit:'5199d9fbe4144ffd0a7bfe4fefadd7286bb6f446',buildTarget:'chrome109',realCompanyPC:false,actualFineReport:false,fullExcelCOM:false},null,2))"
+          node -e "require('fs').writeFileSync('release.json',JSON.stringify({version:'V0.7.1 browser report diagnostics',sourceCommit:'d0b6dcd80c9887e15340307837998cf5065309da',buildTarget:'chrome109',realCompanyPC:false,actualFineReport:false,fullExcelCOM:false},null,2))"
           for file in source/dist/assets/*; do cmp "$file" "assets/$(basename "$file")"; done
           cmp source/dist/index.html index.html
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add assets index.html release.json
-          git commit -m 'build: verified V071 staffed dispatch Pages payload'
-          git push origin HEAD:refs/heads/release/v071-staffed-dispatch
+          git commit -m 'build: verified V071 browser report diagnostics Pages payload'
+          git push origin HEAD:refs/heads/release/v071-browser-import
           echo "Verified payload commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: staffed-dispatch-verification
+          name: browser-import-verification
           path: |
             source/artifacts/
             release.json
