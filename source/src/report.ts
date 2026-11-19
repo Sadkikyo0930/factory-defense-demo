@@ -1,7 +1,7 @@
 export const reportKeys=['FA','REMOVE','BD','UV','POL_TOTAL','FILM','PI','VI','OUT','BLACK','TAPE'] as const;
 export type ReportKey=typeof reportKeys[number];
 export const reportLabels:Record<ReportKey,string>={FA:'FA分析岗（共享）',REMOVE:'TV祛除',BD:'TV BD',UV:'TV UV',POL_TOTAL:'TV POL',FILM:'TV覆膜',PI:'TV PI',VI:'TV VI',OUT:'TV OUT',BLACK:'黑胶（共享来源，当前TV）',TAPE:'贴胶（默认0）'};
-export interface ReportPreview{filename:string;sheet:string;dates:string[];rows:{key:ReportKey;originalNames:string[];values:unknown[];value:number|null;problem:string}[];warnings:string[];ignored:string[];}
+export interface ReportPreview{filename:string;sheet:string;dates:string[];rows:{key:ReportKey;originalNames:string[];values:unknown[];value:number|null;problem:string}[];warnings:string[];ignored:string[];targetBaseline?:unknown;}
 export interface WipSnapshot{fingerprint:string;filename:string;date:string;sheet:string;rawNames:Record<string,string[]>;counts:Record<ReportKey,number>;peelRatio:number;}
 export const normalize=(v:unknown)=>String(v??'').normalize('NFKC').replace(/[\s\u200b_-]/g,'').toUpperCase();
 export function mapReportName(v:unknown,group?:'TV'|'MNT'):ReportKey|undefined{if(group==='MNT')return undefined;const n=normalize(v),aliases:Record<string,ReportKey>={FA分析岗:'FA',FA分析:'FA',TV祛除:'REMOVE',TV去除:'REMOVE',TVBD:'BD',TVUV:'UV',TVPOL:'POL_TOTAL',TV覆膜:'FILM',TV贴膜:'FILM',TV修膜:'FILM',TVPI:'PI',TVVI:'VI',TVOUT:'OUT',黑胶:'BLACK',TV黑胶:'BLACK',贴胶:'TAPE',TV贴胶:'TAPE'};return aliases[n]||(group==='TV'?aliases['TV'+n]:undefined);}

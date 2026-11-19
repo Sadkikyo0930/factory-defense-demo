@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import {BattleSession} from './session';
-import {Step,Kind,towers,label,element,colors,assets} from './spec';
+import {Step,Kind,visibleTowers,label,element,colors,assets,automaticBubble,stageLabel as displayStage} from './spec';
 import {projectBattle,squadState,Squad,hasOperator} from './presentation';
 import {CombatEffects} from './CombatEffects';
 const army:Record<string,[number,number]>={REMOVE:[100,210],TAPE:[275,210],BD:[450,210],UV:[100,410],PEEL:[275,410],POL:[450,410],BUBBLE:[100,610],BLACK:[275,610],FILM:[450,610],PI:[190,805],VI:[395,805]};
@@ -27,15 +27,16 @@ export class CombatView {
   floor.lineStyle(3,0xe0ba6d,.48).lineBetween(555,90,555,871);
   this.root.add(floor);
   const formation=this.session.formation;
-  for (const stage of towers) {
-   const [x,y]=army[stage], color=colors[stage];
+  for (const stage of visibleTowers(this.session.scenario)) {
+   const mntPositions:Partial<Record<Step,[number,number]>>={CUT:[440,406],OC_VI:[243,816],LCM_VI:[435,816]};
+   const [x,y]=mntPositions[stage]??army[stage], color=colors[stage];
    const group=s.add.container(x,y);
    const sprites=new Map<string,{sprite:Phaser.GameObjects.Sprite;x:number;scale:number}>();
    const deployed=formation[stage]||[];
    let operator:Phaser.GameObjects.Image|undefined;
    if(stage==='BUBBLE'){
     group.add(s.add.ellipse(0,65,90,20,0x312566,.75).setStrokeStyle(2,color,.8));
-    if(this.session.bubbleOperatorDeployed){
+    if(automaticBubble(this.session.scenario)||this.session.bubbleOperatorDeployed){
      operator=s.add.image(0,64,'v10-bubble-operator').setOrigin(.5,1);
      operator.setScale(Math.min(119/operator.width,153/operator.height));
      if(this.session.scenario.disabled.includes('BUBBLE-1'))operator.setAlpha(.45);
@@ -52,11 +53,11 @@ export class CombatView {
     sprites.set(stage+'-'+slot,{sprite,x:offset,scale});
    }
    if(stage!=='BUBBLE'&&!deployed.length)group.add(s.add.ellipse(0,62,65,18,color,.09).setStrokeStyle(2,color,.24));
-   group.add(this.text(0,-91,stage==='BUBBLE'?'共享脱泡 · 雷':label[stage]+' · '+element[stage],18,deployed.length||stage==='BUBBLE'?'#dcecff':'#81a0b3'));
+   group.add(this.text(0,-91,displayStage(stage,this.session.scenario)+' · '+element[stage],18,deployed.length||stage==='BUBBLE'?'#dcecff':'#81a0b3'));
    this.root.add(group);
    this.actors.set(stage,{stage,body:group,sprites,operator});
   }
-  for(const squad of projectBattle(this.session.scenario,this.session.result!.simulation)){if(squad.beats.some(beat=>!hasOperator(beat,this.session.scenario,this.session.formation)))throw Error('动画记录与岗位可用性不一致');const root=s.add.container(),frame=squad.kind==='UNKNOWN'?'REVIEW':squad.kind,body=s.add.image(0,0,'v10-monsters',frame);body.setScale(137/body.width);const shadow=s.add.ellipse(0,55,104,19,0x030d1d,.65),shield=s.add.ellipse(0,-3,127,126,0x8de9ff,.06).setStrokeStyle(2,0xb9ebff,.4),name=this.text(0,-108,names[squad.kind],18),stageLabel=this.text(0,-87,label[squad.initialStage],16),hpFrame=s.add.rectangle(0,-69,108,11,0x07152c,.94).setStrokeStyle(1,0x91b9cf,.8),hp=s.add.rectangle(-51,-69,102,7,colors[squad.initialStage]).setOrigin(0,.5);
+  for(const squad of projectBattle(this.session.scenario,this.session.result!.simulation)){if(squad.beats.some(beat=>!hasOperator(beat,this.session.scenario,this.session.formation)))throw Error('动画记录与岗位可用性不一致');const root=s.add.container(),frame=squad.kind==='UNKNOWN'?'REVIEW':squad.kind,body=s.add.image(0,0,'v10-monsters',frame);body.setScale(137/body.width);const shadow=s.add.ellipse(0,55,104,19,0x030d1d,.65),shield=s.add.ellipse(0,-3,127,126,0x8de9ff,.06).setStrokeStyle(2,0xb9ebff,.4),name=this.text(0,-108,names[squad.kind],18),stageLabel=this.text(0,-87,displayStage(squad.initialStage,this.session.scenario),16),hpFrame=s.add.rectangle(0,-69,108,11,0x07152c,.94).setStrokeStyle(1,0x91b9cf,.8),hp=s.add.rectangle(-51,-69,102,7,colors[squad.initialStage]).setOrigin(0,.5);
    root.add([shadow,shield,body,name,stageLabel,hpFrame,hp]);this.root.add(root);this.enemies.push({squad,root,body,shadow,shield,name,stageLabel,hpFrame,hp,x:1680,y:207+squad.lane*188,lastHit:-Infinity});
   }
   this.gfx=s.add.graphics();this.fx=new CombatEffects(this.gfx);this.root.add(this.gfx);this.root.setVisible(true);this.active=true;this.resize();this.render(0);
@@ -71,8 +72,8 @@ export class CombatView {
    enemy.body.x=0;
    enemy.body.y=Math.sin(age*22)*4;
    enemy.body.angle=Math.sin(age*17)*4;
-   enemy.shadow.setScale(1+.03*Math.sin(age*8),1);enemy.shield.setAlpha(state.state==='advance'?.6:.25);enemy.stageLabel.setText(label[state.stage]);enemy.stageLabel.setColor('#'+colors[state.stage].toString(16).padStart(6,'0'));enemy.hp.setFillStyle(colors[state.stage]);enemy.hp.width=102*state.hp;
-   const beat=q.beats[state.beat];if(beat&&time>=beat.start&&time<=beat.end){const realStage=beat.stage,actor=this.actors.get(realStage==='OUT'?'VI':realStage);if(actor){const stage=realStage==='OUT'?'VI':realStage,p=(time-beat.start)/(beat.end-beat.start),key=q.id+':cast:'+state.beat;
+   enemy.shadow.setScale(1+.03*Math.sin(age*8),1);enemy.shield.setAlpha(state.state==='advance'?.6:.25);enemy.stageLabel.setText(displayStage(state.stage,this.session.scenario));enemy.stageLabel.setColor('#'+colors[state.stage].toString(16).padStart(6,'0'));enemy.hp.setFillStyle(colors[state.stage]);enemy.hp.width=102*state.hp;
+   const beat=q.beats[state.beat];if(beat&&time>=beat.start&&time<=beat.end){const realStage=beat.stage,actor=this.actors.get(realStage==='OUT'?beat.resource.replace(/-\d+$/,'') as Step:realStage);if(actor){const stage=realStage==='OUT'?beat.resource.replace(/-\d+$/,'') as Step:realStage,p=(time-beat.start)/(beat.end-beat.start),key=q.id+':cast:'+state.beat;
      if(!this.marks.has(key)){this.marks.add(key);this.telemetry.casts.push({stage:realStage,squadId:q.id,resource:beat.resource,at:time});}stagePulse.set(beat.resource,Math.max(stagePulse.get(beat.resource)||0,Math.sin(Math.min(1,p/.5)*Math.PI)));
      this.fx.projectile(stage,{x:actor.body.x+(actor.sprites.get(beat.resource)?.x||0)+29,y:actor.body.y+4},{x:enemy.root.x,y:enemy.root.y-12},p,time);activeEffects++;
      if(p>.42&&p<.78){enemy.body.setTint(0xffe4c1);enemy.body.x=Math.sin(time*88)*7;enemy.body.angle=Math.sin(time*63)*6;this.fx.crack(enemy.root.x,enemy.y,colors[stage],.65);}else enemy.body.x=0;
@@ -82,7 +83,7 @@ export class CombatView {
    if(state.state==='defeated'||state.state==='escape'||state.state==='waiting'&&time>=q.finish){const key=q.id+':outcome';if(!this.marks.has(key)){this.marks.add(key);this.telemetry.outcomes.push({squadId:q.id,outcome:q.outcome,at:time});}
     const p=Phaser.Math.Clamp((time-q.finish)/.44,0,1);if(q.outcome==='success'){enemy.stageLabel.setText('维修完成');enemy.hpFrame.setVisible(false);enemy.hp.setVisible(false);enemy.root.setAlpha(1-p).setScale(1-p*.65);enemy.body.angle=p*28;enemy.body.y-=p*35;if(p<.4)this.fx.burst('BD',enemy.root.x,enemy.y,.38*p,true);}
     else if(q.outcome==='failure'){enemy.stageLabel.setText('抵抗 · 待返修').setColor('#ffb49d');enemy.hp.setVisible(false);enemy.hpFrame.setVisible(false);enemy.shield.setAlpha(.8).setStrokeStyle(5,0xff9caa,.8);enemy.root.x+=p*560;enemy.root.setAlpha(1-p*.85);enemy.body.angle=-p*14;}
-    else{enemy.stageLabel.setText(label[q.finalStage]+' · 仍在推进');enemy.root.x-=p*55;enemy.body.setTint(0x9cafc4);enemy.shield.setAlpha(.2);}
+    else{enemy.stageLabel.setText(displayStage(q.finalStage,this.session.scenario)+' · 仍在推进');enemy.root.x-=p*55;enemy.body.setTint(0x9cafc4);enemy.shield.setAlpha(.2);}
    }
   }
   for(const actor of this.actors.values()){
