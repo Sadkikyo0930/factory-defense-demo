@@ -1,9 +1,9 @@
 import {CombatView} from './CombatView';
 import Phaser from 'phaser';
 import {BattleSession} from './session';
-import {Step,Kind,towers,label,element,colors,assets,stageSlots} from './spec';
+import {Step,Kind,visibleTowers,label,element,colors,assets,stageSlots,automaticBubble,stageLabel} from './spec';
 import {runtimeReady,recordRuntime,runtimeError} from '../runtime';
-const positions:Record<string,[number,number]>={REMOVE:[75,145],TAPE:[210,145],BD:[345,145],UV:[75,290],PEEL:[210,290],POL:[345,290],BUBBLE:[75,435],BLACK:[210,435],FILM:[345,435],PI:[145,550],VI:[310,550]};
+export const positions:Record<string,[number,number]>={REMOVE:[75,145],TAPE:[210,145],BD:[345,145],UV:[75,290],PEEL:[210,290],POL:[345,290],BUBBLE:[75,435],BLACK:[210,435],FILM:[345,435],PI:[145,550],VI:[310,550],CUT:[490,290],OC_VI:[300,550],LCM_VI:[465,550]};
 const kinds:Kind[]=['BD','POL','FILM','REVIEW'];
 const names:Record<Kind,string>={BD:'BD 装甲怪',POL:'POL 薄膜怪',FILM:'覆膜怪',REVIEW:'过判幻影',UNKNOWN:'后段未分型'};
 interface MonsterView {kind:Kind;body:Phaser.GameObjects.Container;}
@@ -40,10 +40,11 @@ export class Battlefield extends Phaser.Scene {
  }
  resize(){this.combat?.resize();if(!this.world)return;const scale=Math.min(this.scale.width/1160,this.scale.height/620);this.world.setScale(scale).setPosition((this.scale.width-1160*scale)/2,(this.scale.height-620*scale)/2);}
  refresh(){if(!this.armyLayer||this.session.phase!=='setup')return;this.combat?.hide();this.world?.setVisible(true);this.armyLayer.removeAll(true);this.units=[];this.monsters=[];const formation=this.session.formation;
-  for(const stage of towers){const [x,y]=positions[stage],color=colors[stage],head=this.text(x,y-67,label[stage]+' · '+element[stage],16);this.armyLayer.add(head);
+  for(const stage of visibleTowers(this.session.scenario)){const [x,y]=positions[stage],color=colors[stage],head=this.text(x,y-67,stageLabel(stage,this.session.scenario)+' · '+element[stage],16);this.armyLayer.add(head);
    if(stage==='BUBBLE'){
-    const deployed=this.session.bubbleOperatorDeployed;
+    const automatic=automaticBubble(this.session.scenario),deployed=automatic||this.session.bubbleOperatorDeployed;
     const pad=this.add.ellipse(x,y+26,66,24,0x322857,.8).setStrokeStyle(2,color,.8).setInteractive({useHandCursor:true});
+    if(automatic)pad.disableInteractive();
     pad.on('pointerdown',()=>{
      try{
       if(!deployed&&this.selected!=='BUBBLE')throw Error('请先选择左侧的脱泡角色');

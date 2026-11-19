@@ -33,4 +33,4 @@ export function squadState(s:Squad,time:number):SquadState {
  if(time<s.finish+.06)return {...base,state:'waiting',stage:s.finalStage,hp:heldHP};
  return {...base,stage:s.finalStage,state:s.outcome==='success'?'defeated':s.outcome==='failure'?'escape':'waiting',hp:s.outcome==='success'?0:heldHP};
 }
-export function hasOperator(service:Pick<VisualService,'stage'|'resource'>,s:Scenario,formation:Partial<Record<Step,number[]>>){if(s.disabled.includes(service.resource))return false;if(service.stage==='BUBBLE')return service.resource==='BUBBLE-1';const stage=service.stage==='OUT'?'VI':service.stage;return (formation[stage]||[]).some(n=>service.resource===stage+'-'+n);}
+export function hasOperator(service:Pick<VisualService,'stage'|'resource'>,s:Scenario,formation:Partial<Record<Step,number[]>>){if(s.disabled.includes(service.resource))return false;if(service.stage==='BUBBLE')return service.resource==='BUBBLE-1';const stage=service.stage==='OUT'?service.resource.replace(/-\d+$/,'') as Step:service.stage;return (formation[stage]||[]).some(n=>service.resource===stage+'-'+n);}

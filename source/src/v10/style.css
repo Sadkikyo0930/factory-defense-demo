@@ -34,3 +34,11 @@ body[data-phase=result] .mission,body[data-phase=result] .roster{display:none}bo
  .element-row button[data-plus],.element-row button[data-minus]{width:40px;min-width:40px;height:40px}
  .mission>div{flex:1;min-width:0}.mission>div:first-child{min-width:120px}
 }
+.mode-controls{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;padding:.4rem .8rem;background:#102441;color:#edf6ff;font-size:.85rem}
+.mode-controls[hidden]{display:none}
+body[data-phase=setup] .battle-layout{height:auto;flex:1;min-height:0}
+body[data-phase=setup]{display:flex;flex-direction:column}
+body[data-phase=setup]>header,body[data-phase=setup]>.mission,body[data-phase=setup]>footer{flex-shrink:0}
+.mode-controls input,.mode-controls select,#history-dialog select{color:#edf6ff;background:#172e50;border:1px solid #52749a;border-radius:5px;padding:.3rem}
+#history-dialog #history-items{max-height:45vh;overflow:auto}
+#history-items li{margin:.35rem 0}
