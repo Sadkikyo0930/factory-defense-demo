@@ -17,7 +17,7 @@ document.body.innerHTML=`<header><div class="brand"><span class="brand-symbol">�
 <dialog id="task-dialog"><div class="dialog-heading"><h2>本班任务</h2><button id="close-task">关闭</button></div><div class="task-fields"><label>人员预算<input id="budget" type="number" min="0" max="40" step="1"></label><label>COF / 片（演练）<input id="cof" type="number" min="0.1" max="20" step="0.1"></label><label>BD 成功率<input id="yield-bd" type="number" min="0" max="1" step=".01"></label><label>POL 成功率<input id="yield-pol" type="number" min="0" max="1" step=".01"></label><label id="black-ratio-field" hidden>POL 需黑胶比例（演练）<input id="pol-black-ratio" type="number" min="0" max="100" step="any" value="100"></label><label>目标WIP权重<input id="weight-target" type="number" min="0" max="100"></label><label>精益兵力权重<input id="weight-staff" type="number" min="0" max="100"></label><label>有效OUT权重<input id="weight-out" type="number" min="0" max="100"></label></div><p id="task-error" role="alert"></p><button id="apply-task" class="primary">保存本班任务</button></dialog>
 <dialog id="battle-result"><div class="dialog-heading"><h2>本班战绩</h2><button id="close-result">收起战绩</button></div><div id="result-content"></div><div class="result-actions"><button id="export-result">下载本局复盘 JSON</button><button id="result-retry" class="primary">同情景重布阵再战</button></div></dialog>`;
 if(diagnostics)document.body.append(diagnostics);
-const session=new BattleSession({getItem:key=>window.localStorage.getItem(key),setItem:(key,value)=>window.localStorage.setItem(key,value)}),scene=new Battlefield(session),$=(id:string)=>document.getElementById(id)!;
+const session=new BattleSession(),scene=new Battlefield(session),$=(id:string)=>document.getElementById(id)!;
 const dialog=(id:string)=>$(id) as HTMLDialogElement;
 const number=(id:string)=>Number(($(id) as HTMLInputElement).value);
 const say=(e:unknown)=>{$('notice').textContent=e instanceof Error?e.message:String(e);};scene.onError=say;
@@ -92,7 +92,7 @@ function openTask(){
  $('task-error').textContent='';
  $('black-ratio-field').hidden=!s.synthetic||!total;
  initialBlack=String(total?100*eligible.filter(l=>l.black).reduce((n,l)=>n+l.count,0)/total:0);
- initialCof=s.lots[0]?.cof??2;
+ initialCof=s.cofPerPiece??s.lots[0]?.cof??2;
  for(const [id,value] of Object.entries({budget:s.budget,cof:initialCof,'yield-bd':s.yield.BD,'yield-pol':s.yield.POL,'weight-target':s.weights.target,'weight-staff':s.weights.staff,'weight-out':s.weights.out,'pol-black-ratio':initialBlack}))($(id) as HTMLInputElement).value=String(value);
  dialog('task-dialog').showModal();
 }
@@ -104,7 +104,7 @@ $('apply-task').onclick=()=>{
   const read=(id:string)=>{const input=$(id) as HTMLInputElement;if(input.value===''||!input.validity.valid)throw Error('请检查设置：'+input.closest('label')?.textContent?.trim());return number(id);};
   s.budget=read('budget');s.yield.BD=read('yield-bd');s.yield.POL=read('yield-pol');
   s.weights={target:read('weight-target'),staff:read('weight-staff'),out:read('weight-out')};
-  const cof=read('cof');if(cof!==initialCof)for(const lot of s.lots)lot.cof=cof;
+  const cof=read('cof');s.cofPerPiece=cof;if(cof!==initialCof)for(const lot of s.lots)lot.cof=cof;
   if(s.synthetic&&!$('black-ratio-field').hidden){
    const black=read('pol-black-ratio')/100;
    if(black!==Number(initialBlack)/100){
