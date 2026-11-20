@@ -17,6 +17,15 @@ export class BattleSession {
  }
  get targetBaseline(){return this.baseline&&freeze(clone(this.baseline));}
  get targetBaselineProblem(){return this.baselineProblem;}
+ setProductionScenario(s:Scenario,baseline?:TargetBaseline,replace=false,keepFormation=false){
+  this.editable();validate(s,keepFormation?this.army:{});
+  if(baseline){
+   if(this.baseline&&!replace)throw Error('目标已有基准，需单独确认重新初始化');
+   if(!this.targetStorage)throw Error('本机存储不可用，目标和任务未更新');
+   this.targetStorage.setItem(targetStorageKey,JSON.stringify(baseline));this.baseline=baseline;this.baselineProblem='';
+  }
+  this.data=freeze(clone(s));if(!keepFormation)this.clear();this.score=undefined;
+ }
  get phase(){return this.state;}
  get scenario(){return this.data;}
  get formation(){return freeze(clone(this.army));}
@@ -28,7 +37,7 @@ export class BattleSession {
  setSlot(stage:Step,slot:number,occupied:boolean){this.editable();if(stage==='BUBBLE'||stage==='OUT')throw Error('此设备不新增员工');if(slot<1||slot>stageSlots(stage,this.data))throw Error('部署位不合法');const next=clone(this.army),list=next[stage]||[];next[stage]=occupied?[...new Set([...list,slot])]:list.filter(n=>n!==slot);validate(this.data,next);this.army=next;}
  setBubbleOperator(deployed:boolean){this.editable();this.bubbleOperator=deployed;}
  clear(){this.editable();this.army={};this.bubbleOperator=false;}
- begin(){this.editable();validate(this.data,this.army);if(this.data.conditionalPOLConfirmed===false)throw Error('POL型号/条件切割口径尚未确认，请在任务设置确认后开战');for(const [stage,min] of Object.entries(this.data.minimum))if((this.army[stage as Step]?.length||0)<min!)throw Error('未达到本情景安全最低配备');this.state='battle';try{this.score=freeze(evaluate(this.data,freeze(clone(this.army))));return this.score;}catch(e){this.state='setup';throw e;}}
+ begin(){this.editable();if(this.data.productionBlock)throw Error(this.data.productionBlock);validate(this.data,this.army);if(this.data.conditionalPOLConfirmed===false)throw Error('POL型号/条件切割口径尚未确认，请在任务设置确认后开战');for(const [stage,min] of Object.entries(this.data.minimum))if((this.army[stage as Step]?.length||0)<min!)throw Error('未达到本情景安全最低配备');this.state='battle';try{this.score=freeze(evaluate(this.data,freeze(clone(this.army))));return this.score;}catch(e){this.state='setup';throw e;}}
  finish(){if(this.state!=='battle')throw Error('当前没有进行中的战斗');this.state='result';return this.score!;}
  cancelFailedPresentation(){if(this.state==='battle'){this.state='setup';this.score=undefined;}}
  retry(){if(this.state!=='result')throw Error('结算后才能重布阵');this.state='setup';this.score=undefined;}

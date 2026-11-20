@@ -7,7 +7,7 @@ export interface TargetBaseline extends TargetInput {
  date:string; confirmed:true; peelTarget?:number; tvTargets:Partial<Record<Step,number>>; mntTargets:TargetRow[];
 }
 export const targetStorageKey='factory-defense:v10:rw-target-baseline:1';
-const aliases:Record<string,Step|'POL_TOTAL'>={祛除:'REMOVE',去除:'REMOVE',贴胶:'TAPE',BD:'BD',UV:'UV',撕POL:'PEEL',机器撕POL:'PEEL',贴POL:'POL',POL:'POL_TOTAL',脱泡:'BUBBLE',黑胶:'BLACK',覆膜:'FILM',贴膜:'FILM',修膜:'FILM',PI:'PI',VI:'VI',OUT:'OUT'};
+const aliases:Record<string,Step|'POL_TOTAL'>={祛除:'REMOVE',去除:'REMOVE',贴胶:'TAPE',BD:'BD',UV:'UV',撕POL:'PEEL',机器撕POL:'PEEL',贴POL:'POL',POL:'POL_TOTAL',脱泡:'BUBBLE',共享脱POL:'BUBBLE',黑胶:'BLACK',覆膜:'FILM',贴膜:'FILM',修膜:'FILM',PI:'PI',VI:'VI',OUT:'OUT'};
 export function readTargetInput(value:unknown):TargetInput {
  const data=value as TargetInput;
  if(!data||data.version!==1||!Array.isArray(data.rows)||!data.rows.length||data.rows.length>2000)throw Error('目标基准格式不正确');

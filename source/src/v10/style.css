@@ -42,3 +42,13 @@ body[data-phase=setup]>header,body[data-phase=setup]>.mission,body[data-phase=se
 .mode-controls input,.mode-controls select,#history-dialog select{color:#edf6ff;background:#172e50;border:1px solid #52749a;border-radius:5px;padding:.3rem}
 #history-dialog #history-items{max-height:45vh;overflow:auto}
 #history-items li{margin:.35rem 0}
+#production-data .data-controls{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+#production-data #data-tables{max-height:49vh;overflow:auto;padding-right:8px}
+#production-data #data-pending{border-top:1px solid #adbed3;padding-top:8px}
+#production-data #data-pending label{display:inline-block;margin:4px 8px 6px 0}
+#production-data #data-save-target{display:inline;width:auto}
+#production-data #data-error{color:#a23f32}
+#production-data #data-tables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#production-data #data-tables>details{grid-column:1/-1}
+#production-data .data-bu :is(th,td){padding:6px 8px;white-space:normal}
+@media(max-width:700px){#production-data #data-tables{grid-template-columns:1fr}}
