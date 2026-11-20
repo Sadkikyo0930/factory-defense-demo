@@ -22,22 +22,42 @@ try{
  const row=(model,sizeCode,bu,dayQty,nightQty,rates)=>({model,sizeCode,bu,dayQty,nightQty,expectedDay:expected(dayQty,rates),expectedNight:expected(nightQty,rates)});
  const plan={schemaVersion:1,kind:'rw-mdl-plan',date,dateKey:'20261120',rows:[row('AB315AAA1','315','TV',1000,500,[42,86,570,5]),row('AB238AAA1','238','MNT',2000,1000,[33,35,268,4])]};
  const combined={...rw,productionPlan:plan};
+ const inspections=[
+  {name:'MNT OC VI / OUT',group:' mnt ',today:4,target:6,row:28,column:12},
+  {name:'LCM VI ／ OUT',group:'MNT',today:5,target:7,row:29,column:12},
+  {name:'TV VI / OUT',group:'TV',today:2,target:3,row:30,column:12}
+ ];
+ combined.rows=[...rw.rows,...inspections];
+ combined.targetBaseline={version:1,rows:[...rw.targetBaseline.rows,...inspections]};
  await file('production-json',combined);assert.deepEqual(await state(),before);
+ assert.deepEqual((await cells('MNT','OC_VI')).slice(1),['4','未导入','6']);
+ assert.deepEqual((await cells('MNT','LCM_VI')).slice(1),['5','未导入','7']);
+ assert.equal((await cells('TV','VI'))[1],'2');
+ assert.equal((await cells('TV','BD'))[1],'10');assert.equal((await cells('MNT','BD'))[1],'7');
  assert.deepEqual((await cells('MNT','CUT')).slice(1),['3','未导入','3']);
  assert.equal((await cells('TV','BLACK'))[1],'8');assert.equal((await cells('MNT','BLACK'))[1],'33');
  await page.locator('#mnt-opening-panel').selectOption('LCM');await page.locator('#data-confirm').click();
- assert.equal((await state()).lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),18);
+ assert.equal((await state()).lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),20);
  assert.ok((await state()).lots.some(l=>l.source==='forecast'));
  assert.deepEqual((await cells('TV','REMOVE')).slice(1,3),['未导入','9']);
  await page.locator('#data-shift').selectOption('NIGHT');
  assert.deepEqual((await cells('TV','REMOVE')).slice(1,3),['未导入','4']);
  const tv=await state();assert.equal(tv.forecast.plan,500);
- assert.equal(tv.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),18);
+ assert.equal(tv.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),20);
  assert.ok(tv.lots.some(l=>l.source==='forecast'&&l.at>0));
  const invalid={...rw,rows:[...rw.rows,{name:'MNT BD',today:123}]};
  await page.locator('#production-json').setInputFiles({name:'conflict.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(invalid))});
  await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('冲突'));
  assert.deepEqual(await state(),tv);
+ const savedBaseline=await page.evaluate(()=>window.v10Session.targetBaseline);
+ for(const field of ['rows','targetBaseline']){
+  const conflict={name:'MNT OC VI / OUT',group:'TV',row:28,column:12,today:4,target:6};
+  const conflicting={...combined,[field]:field==='rows'?[conflict]:{version:1,rows:[conflict]}};
+  await page.locator('#production-json').setInputFiles({name:'bu-conflict.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(conflicting))});
+  await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('岗位前缀 MNT 与 group TV'));
+  assert.match(await page.locator('#data-error').innerText(),/"name":"MNT OC VI \/ OUT","group":"TV","row":28,"column":12/);
+  assert.deepEqual(await state(),tv);assert.deepEqual(await page.evaluate(()=>window.v10Session.targetBaseline),savedBaseline);
+ }
  const bad={...combined,productionPlan:{...plan,date:'2026-11-21',dateKey:'20261121'}};
  await page.locator('#production-json').setInputFiles({name:'wrong-date.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bad))});
  await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('没有日报当天'));
@@ -52,10 +72,14 @@ try{
  await page.locator('#data-confirm').click();assert.equal((await state()).targets.BD,0);
  assert.equal((await state()).forecast,undefined);
  assert.equal((await cells('TV','REMOVE'))[2],'未导入');
- await file('production-json',{...updated,productionPlan:{...plan,rules:{AB238AAA1:{panel:'LCM',cut:true}}}});
+ // V3.7 emits already-allocated black glue rows; the game must not split them again.
+ const allocated=['TV','MNT'].map((group,i)=>({name:group+'黑胶',group,today:i?33:8,allocation:'blackGlue-20-80',sourceName:'黑胶'}));
+ await file('production-json',{...updated,rows:[...updated.rows.filter(r=>r.name!=='黑胶'),...allocated],productionPlan:{...plan,rules:{AB238AAA1:{panel:'LCM',cut:true}}}});
+ assert.equal((await cells('TV','BLACK'))[1],'8');assert.equal((await cells('MNT','BLACK'))[1],'33');
  await page.locator('#data-confirm').click();
  await page.locator('#close-data').click();await page.locator('#bu-mode').selectOption('MNT');
  const mnt=await state();assert.equal(mnt.forecast.plan,1000);assert.equal(mnt.targets.BD,9);
+ assert.equal(mnt.targets.OC_VI,6);assert.equal(mnt.targets.LCM_VI,7);
  assert.equal(mnt.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),43);
  assert.ok(mnt.lots.every(l=>l.mode==='MNT'));assert.ok(mnt.lots.some(l=>l.stage==='LCM_VI'&&l.source==='forecast'));
  await mkdir('artifacts',{recursive:true});await page.locator('#import-report').click();await page.screenshot({path:'artifacts/v10-data-center.png'});await page.locator('#close-data').click();
