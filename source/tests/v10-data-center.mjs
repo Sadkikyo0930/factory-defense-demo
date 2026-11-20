@@ -59,6 +59,24 @@ try{
  assert.equal(mnt.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),43);
  assert.ok(mnt.lots.every(l=>l.mode==='MNT'));assert.ok(mnt.lots.some(l=>l.stage==='LCM_VI'&&l.source==='forecast'));
  await mkdir('artifacts',{recursive:true});await page.locator('#import-report').click();await page.screenshot({path:'artifacts/v10-data-center.png'});await page.locator('#close-data').click();
- await page.locator('#task-settings').click();assert.equal(await page.locator('#task-rows [data-source=opening],#task-rows [data-source=target]').count(),0);
+ const beforeSettings=await state();
+ await page.locator('#task-settings').click();
+ assert.equal(await page.locator('#task-dialog details,#task-dialog table,#task-dialog input[type=checkbox],#use-demo').count(),0);
+ assert.equal(await page.locator('#black-ratio-field').isVisible(),false);
+ await page.screenshot({path:'artifacts/v10-compact-task.png'});
+ await page.locator('#budget').fill('18');await page.locator('#apply-task').click();
+ assert.deepEqual(await state(),{...beforeSettings,budget:18});
+ assert.match(await page.evaluate(()=>{try{window.v10Session.begin();return 'unexpected';}catch(e){return e.message;}}),/生产任务数据中心/);
+ await page.locator('#import-report').click();await page.locator('#data-confirm-conditions').click();
+ assert.match(await page.locator('#data-error').innerText(),/黑胶|切割/);
+ assert.equal((await state()).conditionalPOLConfirmed,false);
+ assert.equal(await page.locator('#data-cut-field').isVisible(),false); // Plan explicitly requires cutting.
+ await page.locator('#data-route-black').selectOption('no');
+ await page.locator('#data-confirm-conditions').click();assert.equal((await state()).conditionalPOLConfirmed,true);
+ const summarize=s=>Object.fromEntries(['opening','forecast','external'].map(source=>[source,s.lots.filter(l=>l.source===source).reduce((n,l)=>n+l.count,0)]));
+ assert.deepEqual(summarize(await state()),summarize(beforeSettings));
+ assert.deepEqual((await state()).targets,beforeSettings.targets);
+ await page.locator('#close-data').click();await page.locator('#battle-start').click();await page.locator('#challenge-player').fill('Synthetic QA');await page.getByRole('button',{name:'确认开战'}).click();
+ await page.waitForFunction(()=>window.v10Session.phase==='battle');
  assert.deepEqual(errors,[]);console.log('PASS single picker, combined atomic confirmation, invalid rollback, legacy no-plan notice, TV/MNT and shift isolation, pinned targets');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

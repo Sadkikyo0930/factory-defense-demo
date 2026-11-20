@@ -52,8 +52,8 @@ export function configurePOL(s:Scenario,ratio:number,cutRatio?:number){if(!Numbe
  let cumulative=0,allocated=0;for(const lot of grouped.values()){cumulative+=lot.count;const black=Math.round(cumulative*ratio)-allocated;allocated+=black;if(black)rest.push({...lot,id:lot.id+':pol-black',count:black,black:true});if(lot.count-black)rest.push({...lot,id:lot.id+':pol-plain',count:lot.count-black,black:false});}s.lots=rest;
 }
 export function freeze<T>(value:T):T{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}return value;}
-export function validate(s:Scenario,f:Formation){
- if(s.inConfirmed!==true)throw Error('新增 IN 口径未确认：不得把上游流入重复计为独立新投入');
+export function validate(s:Scenario,f:Formation,requireConfirmedInput=true){
+ if(requireConfirmedInput&&s.inConfirmed!==true)throw Error('新增 IN 口径未确认：不得把上游流入重复计为独立新投入');
  if(!Number.isSafeInteger(s.rawFA)||s.rawFA<0)throw Error('FA共享原始值不合法');
  if(typeof s.seed!=='string'||!s.seed.length||s.seed.length>256)throw Error('情景种子不合法');
  if(!Number.isFinite(s.duration)||s.duration<=0||s.duration>36000)throw Error('班次必须在 10 小时内');

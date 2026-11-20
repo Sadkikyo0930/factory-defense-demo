@@ -11,6 +11,11 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
  <label>日期 <input type="date" id="data-date"></label><label>班次 <select id="data-shift"><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label></div>
  <input type="file" id="production-json" accept=".json,application/json" hidden>
  <p id="data-summary"></p><p>预计新增 NG 按首道维修工序展示，非实际 NG；期初 WIP 不按班次拆分。FA、Disa 不进入任务；共享黑胶按 TV 20% / MNT 80%。</p>
+ <section id="data-conditions" hidden><h3>开战前确认</h3>
+ <label id="data-confirm-in-field"><input type="checkbox" id="data-confirm-in"> 确认已有独立新增 IN 口径（没有则保持 0；不会生成新增量）</label>
+ <label id="data-cut-field">未指定的 POL 切割条件 <select id="data-route-cut"><option value="">请选择</option><option value="no">不切割</option><option value="yes">需要切割</option></select></label>
+ <label id="data-black-field">未指定的 POL 黑胶条件 <select id="data-route-black"><option value="">请选择</option><option value="no">不走黑胶</option><option value="yes">需要黑胶</option></select></label>
+ <button id="data-confirm-conditions">确认开战条件</button></section>
  <div id="data-tables"></div>
  <section id="data-pending" hidden><p id="data-preview-label"></p><label>未分型 MNT 期初路线 <select id="mnt-opening-panel"><option value="">不指定</option><option>OC</option><option>LCM</option></select></label>
  <label><input type="checkbox" id="data-save-target"> 确认初始化目标基准（替换需再次确认）</label>
@@ -34,6 +39,11 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
   date.disabled=!!draft?.rw;
   const dateKey=dateValue(),body=$('data-tables');body.replaceChildren();
   if(!validPlanDate(dateKey)){error('请选择有效的任务日期');return;}
+  const task=session.scenario,pending=task.lots.filter(l=>l.kind==='POL'&&l.count>0&&['PEEL','POL','BUBBLE'].includes(l.stage));
+  $('data-conditions').hidden=!!draft||(task.inConfirmed&&task.conditionalPOLConfirmed!==false);
+  $('data-confirm-in-field').hidden=task.inConfirmed;
+  $('data-cut-field').hidden=task.conditionalPOLConfirmed!==false||!pending.some(l=>l.cut===undefined);
+  $('data-black-field').hidden=task.conditionalPOLConfirmed!==false||!pending.some(l=>l.black===undefined);
   let shownTargets=baselineValues(upper);
   if(draft?.rw?.target&&!upper){
    try{shownTargets=baselineValues(confirmRwTargets(draft.rw.target,draft.rw.date,val('data-tv-peel'),val('data-mnt-peel')));}catch{}
@@ -90,6 +100,7 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
    attachProduction(shiftScenario(mode,sh,key),rw,p,baseline,choice);
  }
  function resetSelection(){
+  resetConditions();
   const s=session.scenario;
   date.value=s.date?.replace(/^(....)(..)(..)$/,'$1-$2-$3')||(document.getElementById('scenario-date') as HTMLInputElement).value;
   shift.value=s.shift??'DAY';
@@ -129,8 +140,21 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
    snapshot=rw;plan=p;panelChoice=choice;draft=undefined;changed();error('已确认导入。');show();
   }catch(e){error(e);}
  };
+ $('data-confirm-conditions').onclick=()=>{
+  try{
+   const answer=(id:string)=>{const value=$<HTMLSelectElement>(id).value;return value===''?undefined:value==='yes';};
+   const confirmIn=$<HTMLInputElement>('data-confirm-in').checked;
+   if(!session.scenario.inConfirmed&&!confirmIn)throw Error('请先核对独立新增 IN 口径');
+   session.confirmProductionConditions({confirmIn,cut:answer('data-route-cut'),black:answer('data-route-black')});
+   changed();resetConditions();error('开战条件已确认。');show();
+  }catch(e){error(e);}
+ };
+ function resetConditions(){
+  $<HTMLInputElement>('data-confirm-in').checked=false;
+  $<HTMLSelectElement>('data-route-cut').value='';$<HTMLSelectElement>('data-route-black').value='';
+ }
  for(const id of ['data-save-target','data-tv-peel','data-mnt-peel'])$<HTMLInputElement>(id).onchange=()=>{error('');show();};
- function select(){try{error('');if(!draft&&(snapshot||plan)){commit(session.scenario.mode??'TV',selectedShift(),dateValue(),snapshot,plan);changed();}show();}catch(e){error(e);}}
+ function select(){try{resetConditions();error('');if(!draft&&(snapshot||plan)){commit(session.scenario.mode??'TV',selectedShift(),dateValue(),snapshot,plan);changed();}show();}catch(e){error(e);}}
  date.onchange=()=>{if(!draft?.rw)select();};shift.onchange=select;
  return {hasData:()=>!!(snapshot||plan),load:(mode:Mode,workShift:Shift,key:string)=>commit(mode,workShift,key,snapshot,plan)};
 }

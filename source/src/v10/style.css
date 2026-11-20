@@ -48,6 +48,13 @@ body[data-phase=setup]>header,body[data-phase=setup]>.mission,body[data-phase=se
 #production-data #data-pending label{display:inline-block;margin:4px 8px 6px 0}
 #production-data #data-save-target{display:inline;width:auto}
 #production-data #data-error{color:#a23f32}
+#task-dialog{width:min(540px,95vw)}
+#task-dialog .task-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px}
+#task-dialog .task-fields input{width:100%}
+#task-dialog #task-error:empty{display:none}
+#task-dialog #apply-task{margin-top:14px}
+#production-data #data-conditions label{display:inline-block;margin:4px 8px 6px 0}
+#production-data #data-confirm-in{display:inline;width:auto}
 #production-data #data-tables{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 #production-data #data-tables>details{grid-column:1/-1}
 #production-data .data-bu :is(th,td){padding:6px 8px;white-space:normal}
