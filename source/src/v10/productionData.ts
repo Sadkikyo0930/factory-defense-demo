@@ -154,7 +154,7 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
     s.productionBlock='MNT 期初 WIP 须确认未分型批次的 OC / LCM 路线';continue;
    }
    const kind:Kind=['PEEL','POL','BUBBLE','CUT','BLACK'].includes(stage)?'POL':stage==='FILM'?'FILM':['PI','VI','OC_VI','LCM_VI','OUT'].includes(stage)?'UNKNOWN':'BD';
-   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:2,mntPanel:mode==='MNT'?(stage==='OC_VI'?'OC':stage==='LCM_VI'?'LCM':panel):undefined,cut:stage==='CUT',black:stage==='BLACK'};
+   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:2,mntPanel:mode==='MNT'?(stage==='OC_VI'?'OC':stage==='LCM_VI'?'LCM':panel):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined};
    s.lots.push(lot);
   }
   s.rawFA=0;
@@ -164,11 +164,15 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
   for(const b of forecast.result.batches)rules[b.model]=plan.rules[b.model]??{};
   if(mode==='MNT'&&forecast.result.batches.some(b=>!rules[b.model]?.panel)){
    s.productionBlock='MNT 生产计划缺少型号 OC / LCM 路线；未注入预计 NG，补齐 rules 后重新导入';
-  }else s.lots.push(...forecastLots(forecast.result,mode,rules,demoArrival));
+  }else s.lots.push(...forecastLots(forecast.result,mode,rules,demoArrival).map((lot,i)=>{
+   const rule=rules[forecast.result.batches[i].model];
+   return lot.kind==='POL'?{...lot,cut:rule.cut,black:rule.polBlack}:lot;
+  }));
   s.forecast={plan:forecast.result.plan,version:forecast.result.version,amounts:Object.fromEntries(ngKinds.map(k=>[k,forecast.result.diagnostic[k].count])) as NonNullable<Scenario['forecast']>['amounts']};
  }
  if(snapshot||plan){s.synthetic=false;s.id='production:'+mode+':'+shift+':'+date;s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date;s.sourceNote=(s.productionBlock?s.productionBlock+'。':'')+'期初为日报时点快照；预计 NG 是独立预测任务，到料时间为演练假设。';}
  s.targets=baselineValues(baseline)[mode];s.confirmedTargetsOnly=true;
- validate(s,{});
+ s.conditionalPOLConfirmed=!s.lots.some(l=>l.kind==='POL'&&l.count>0&&['PEEL','POL','BUBBLE'].includes(l.stage)&&(l.cut===undefined||l.black===undefined));
+ validate(s,{},false);
  return s;
 }

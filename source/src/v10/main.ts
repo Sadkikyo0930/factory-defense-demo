@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import './style.css';
 import {BattleSession} from './session';
 import {Battlefield,positions} from './Battlefield';
-import {visibleTowers,stages,Step,Kind,label,element,colors,assets,stageSlots,clone,demoScenario,Lot,configurePOL,automaticBubble,stageLabel} from './spec';
+import {visibleTowers,Step,label,element,colors,assets,stageSlots,clone,configurePOL,automaticBubble,stageLabel} from './spec';
 import {setupDataCenter} from './productionDataUI';
 import {setupModeUI} from './modeUI';
 import {rendererChoice,recordRuntime,runtimeError,sampleRuntime} from '../runtime';
@@ -14,7 +14,7 @@ document.body.innerHTML=`<header><div class="brand"><span class="brand-symbol">�
 <section class="mission"><div class="mission-name"><span id="scenario-name"></span><small id="data-source"></small></div><div><small>期初 WIP</small><strong id="opening-count">0</strong><span id="opening-detail"></span></div><div><small>独立新增 IN</small><strong id="in-count">0</strong><span id="in-detail"></span></div><div><small>目标期末 WIP</small><strong id="target-count">0</strong><span>候选规则 · 10 小时同班次</span></div><div class="clock"><small id="clock-title">等待开战</small><strong id="battle-clock">00:05</strong><div class="clock-track"><i id="clock-fill"></i></div></div></section>
 <div id="combat-hud"><b>元素维修防线</b><span id="combat-caption">维修军团来袭</span><strong id="combat-clock">00:05</strong></div><main class="battle-layout"><aside class="roster"><div class="roster-heading"><b>元素兵种</b><span id="staff-count">0 / 20</span></div><p>按岗位布阵 · 点击 ＋ 或拖到对应阵地</p><div id="element-roster"></div><div class="roster-note">共享脱泡自动生效</div></aside><section id="game" aria-label="Phaser 元素维修塔防战场"></section></main>
 <footer><div id="notice" role="status">选择左侧元素，点击阵地编号部署。开战后全部锁定。</div><button id="clear-formation">清空布阵</button><button id="skip-battle" hidden>跳过动画</button><button id="open-result" hidden>查看战绩</button><button id="retry-battle" hidden>同情景重布阵</button><button id="battle-start" class="primary">开战 <small>10h → 5s</small></button></footer>
-<dialog id="task-dialog"><div class="dialog-heading"><h2>本班任务</h2><button id="close-task">关闭</button></div><p id="task-note"></p><p>这里只公开基础任务，不显示最优人数或上游推算答案。真实日报导入不含新增 IN。</p><div class="task-fields"><label>人员预算<input id="budget" type="number" min="0" max="40" step="1"></label><label>COF / 片（演练）<input id="cof" type="number" min="0.1" max="20" step="0.1"></label><label>BD 成功率<input id="yield-bd" type="number" min="0" max="1" step=".01"></label><label>POL 成功率<input id="yield-pol" type="number" min="0" max="1" step=".01"></label><label>POL需黑胶比例（演练）<input id="pol-black-ratio" type="number" min="0" max="100" value="100"></label><label id="cut-ratio-field" hidden>MNT 切割比例（演练）<input id="pol-cut-ratio" type="number" min="0" max="100" value="0"></label><label>目标WIP权重<input id="weight-target" type="number" min="0" max="100"></label><label>精益兵力权重<input id="weight-staff" type="number" min="0" max="100"></label><label>有效OUT权重<input id="weight-out" type="number" min="0" max="100"></label></div><p>新增量编辑仅针对本 BU 独立投入；预测 NG 独立保留。新 IN 到料按本情景原时间或新增批次 1 小时（演练）入场。</p><details><summary>高级调整：独立新增投入</summary><p>期初、预测及目标请在生产任务数据中心核对。</p><div class="table-scroll"><table><thead><tr><th>工序</th><th>独立新增</th></tr></thead><tbody id="task-rows"></tbody></table></div></details><label class="ack"><input id="confirm-pol" type="checkbox">已确认本批 POL 型号的切割与黑胶设置；不确定时保持未确认。</label><label class="ack"><input id="confirm-in" type="checkbox">已确认新增 IN 是独立物理产品，未包含上游流入；若没有独立新投入，明确采用 0。</label><p class="muted">覆膜 / 过判 100% 为演练值；后段未分型不反推 BD/POL 成功率。TV 条件切割设备/产能未确认，不生成假工位。权重 60/25/15 待审批。</p><p id="task-error" role="alert"></p><button id="apply-task" class="primary">保存本班任务</button><button id="use-demo">恢复明确的 SYNTHETIC 演练情景</button></dialog>
+<dialog id="task-dialog"><div class="dialog-heading"><h2>本班任务</h2><button id="close-task">关闭</button></div><div class="task-fields"><label>人员预算<input id="budget" type="number" min="0" max="40" step="1"></label><label>COF / 片（演练）<input id="cof" type="number" min="0.1" max="20" step="0.1"></label><label>BD 成功率<input id="yield-bd" type="number" min="0" max="1" step=".01"></label><label>POL 成功率<input id="yield-pol" type="number" min="0" max="1" step=".01"></label><label id="black-ratio-field" hidden>POL 需黑胶比例（演练）<input id="pol-black-ratio" type="number" min="0" max="100" step="any" value="100"></label><label>目标WIP权重<input id="weight-target" type="number" min="0" max="100"></label><label>精益兵力权重<input id="weight-staff" type="number" min="0" max="100"></label><label>有效OUT权重<input id="weight-out" type="number" min="0" max="100"></label></div><p id="task-error" role="alert"></p><button id="apply-task" class="primary">保存本班任务</button></dialog>
 <dialog id="battle-result"><div class="dialog-heading"><h2>本班战绩</h2><button id="close-result">收起战绩</button></div><div id="result-content"></div><div class="result-actions"><button id="export-result">下载本局复盘 JSON</button><button id="result-retry" class="primary">同情景重布阵再战</button></div></dialog>`;
 if(diagnostics)document.body.append(diagnostics);
 const session=new BattleSession({getItem:key=>window.localStorage.getItem(key),setItem:(key,value)=>window.localStorage.setItem(key,value)}),scene=new Battlefield(session),$=(id:string)=>document.getElementById(id)!;
@@ -84,16 +84,39 @@ function showResult(){void modes.finish();refresh();renderResults($('result-cont
 $('open-result').onclick=showResult;
 scene.onFinish=showResult;$('close-result').onclick=()=>dialog('battle-result').close();
 $('export-result').onclick=()=>{if(!session.result)return;const blob=new Blob([JSON.stringify(session.result,null,2)],{type:'application/json'}),a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download='factory-v10-battle-result.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-function openTask(){if(session.phase!=='setup'){say('开战后任务参数已锁定');return;}const s=session.scenario;$('task-note').textContent=s.sourceNote;for(const [id,v] of Object.entries({budget:s.budget,cof:s.lots[0]?.cof||2,'yield-bd':s.yield.BD,'yield-pol':s.yield.POL,'weight-target':s.weights.target,'weight-staff':s.weights.staff,'weight-out':s.weights.out}))($(id) as HTMLInputElement).value=String(v);($('confirm-in') as HTMLInputElement).checked=s.inConfirmed;($('confirm-pol') as HTMLInputElement).checked=s.conditionalPOLConfirmed!==false;$('cut-ratio-field').hidden=s.mode!=='MNT';const eligible=s.lots.filter(l=>(s.mode==='MNT'||l.source!=='forecast')&&l.kind==='POL'&&['PEEL','POL','BUBBLE'].includes(l.stage)),totalPOL=eligible.reduce((n,l)=>n+l.count,0);($('pol-black-ratio') as HTMLInputElement).value=String(totalPOL?Math.round(100*eligible.filter(l=>l.black).reduce((n,l)=>n+l.count,0)/totalPOL):100);($('pol-cut-ratio') as HTMLInputElement).value=String(totalPOL?Math.round(100*eligible.filter(l=>l.cut).reduce((n,l)=>n+l.count,0)/totalPOL):0);
- $('task-rows').replaceChildren();for(const stage of stages){if(stage!=='OUT'&&!visibleTowers(s).includes(stage))continue;const tr=document.createElement('tr'),title=document.createElement('td');title.textContent=stageLabel(stage,s)+' / '+element[stage];tr.append(title);for(const type of ['external']){const td=document.createElement('td'),input=document.createElement('input');input.type='number';input.min='0';input.step='1';input.dataset.stage=stage;input.dataset.source=type;input.value=String(s.lots.filter(l=>l.mode===(s.mode??'TV')&&l.stage===stage&&l.source===type).reduce((n,l)=>n+l.count,0));td.append(input);tr.append(td);}$('task-rows').append(tr);}dialog('task-dialog').showModal();}
-$('task-settings').onclick=openTask;$('close-task').onclick=()=>dialog('task-dialog').close();
-$('apply-task').onclick=()=>{try{const s=clone(session.scenario);s.budget=number('budget');s.weights={target:number('weight-target'),staff:number('weight-staff'),out:number('weight-out')};s.yield.BD=number('yield-bd');s.yield.POL=number('yield-pol');s.inConfirmed=($('confirm-in') as HTMLInputElement).checked;for(const lot of s.lots)lot.cof=number('cof');
- for(const field of dialog('task-dialog').querySelectorAll<HTMLInputElement>('[data-stage]')){const stage=field.dataset.stage as Step,source=field.dataset.source!,value=Number(field.value);if(source==='target'&&field.value.trim()===''){delete s.targets[stage];continue;}if(field.value.trim()===''||!Number.isSafeInteger(value)||value<0)throw Error('期初/IN/目标须为非负安全整数');if(source==='target'){s.targets[stage]=value;continue;}const existing=s.lots.filter(l=>l.mode===(s.mode??'TV')&&l.stage===stage&&l.source===source),total=existing.reduce((n,l)=>n+l.count,0);if(total===value)continue;let remaining=value;for(const lot of existing){lot.count=Math.min(remaining,lot.count);remaining-=lot.count;}if(remaining){const kind:Kind=['PEEL','POL','BUBBLE','BLACK','CUT'].includes(stage)?'POL':stage==='FILM'?'FILM':['PI','VI','OC_VI','LCM_VI','OUT'].includes(stage)?'UNKNOWN':'BD';const lot:Lot={id:'edited:'+stage+':'+source,mode:s.mode??'TV',mntPanel:stage==='LCM_VI'?'LCM':s.mode==='MNT'?'OC':undefined,cut:stage==='CUT',kind,stage,count:remaining,source:source as 'opening'|'external',at:source==='opening'?0:3600,cof:number('cof'),black:kind==='POL'};const previous=s.lots.find(l=>l.id===lot.id);if(previous)previous.count+=remaining;else s.lots.push(lot);}}
- s.conditionalPOLConfirmed=($('confirm-pol') as HTMLInputElement).checked;configurePOL(s,number('pol-black-ratio')/100,s.mode==='MNT'?number('pol-cut-ratio')/100:undefined);session.updateScenario(s);dialog('task-dialog').close();scene.refresh();refresh();say('任务已保存 · 只在本机使用；请按岗位布阵。');}catch(e){$('task-error').textContent=(e as Error).message;}};
-$('use-demo').onclick=()=>{try{session.setScenario(demoScenario());scene.refresh();refresh();dialog('task-dialog').close();}catch(e){$('task-error').textContent=(e as Error).message;}};
-
+const editableBlackLots=()=>session.scenario.lots.filter(l=>l.kind==='POL'&&l.count>0&&['PEEL','POL','BUBBLE'].includes(l.stage)&&(session.scenario.mode==='MNT'||l.source!=='forecast'));
+let initialBlack='',initialCof=2;
+function openTask(){
+ if(session.phase!=='setup'){say('开战后任务参数已锁定');return;}
+ const s=session.scenario,eligible=editableBlackLots(),total=eligible.reduce((n,l)=>n+l.count,0);
+ $('task-error').textContent='';
+ $('black-ratio-field').hidden=!s.synthetic||!total;
+ initialBlack=String(total?100*eligible.filter(l=>l.black).reduce((n,l)=>n+l.count,0)/total:0);
+ initialCof=s.lots[0]?.cof??2;
+ for(const [id,value] of Object.entries({budget:s.budget,cof:initialCof,'yield-bd':s.yield.BD,'yield-pol':s.yield.POL,'weight-target':s.weights.target,'weight-staff':s.weights.staff,'weight-out':s.weights.out,'pol-black-ratio':initialBlack}))($(id) as HTMLInputElement).value=String(value);
+ dialog('task-dialog').showModal();
+}
+$('task-settings').onclick=openTask;
+$('close-task').onclick=()=>dialog('task-dialog').close();
+$('apply-task').onclick=()=>{
+ try{
+  const s=clone(session.scenario);
+  const read=(id:string)=>{const input=$(id) as HTMLInputElement;if(input.value===''||!input.validity.valid)throw Error('请检查设置：'+input.closest('label')?.textContent?.trim());return number(id);};
+  s.budget=read('budget');s.yield.BD=read('yield-bd');s.yield.POL=read('yield-pol');
+  s.weights={target:read('weight-target'),staff:read('weight-staff'),out:read('weight-out')};
+  const cof=read('cof');if(cof!==initialCof)for(const lot of s.lots)lot.cof=cof;
+  if(s.synthetic&&!$('black-ratio-field').hidden){
+   const black=read('pol-black-ratio')/100;
+   if(black!==Number(initialBlack)/100){
+    const eligible=editableBlackLots(),total=eligible.reduce((n,l)=>n+l.count,0);
+    configurePOL(s,black,s.mode==='MNT'?eligible.filter(l=>l.cut).reduce((n,l)=>n+l.count,0)/total:undefined);
+   }
+  }
+  session.updateScenario(s);dialog('task-dialog').close();scene.refresh();refresh();say('本班参数已保存。');
+ }catch(e){$('task-error').textContent=(e as Error).message;}
+};
 // Disabled controls and API guards both apply; synthetic DOM events cannot bypass phase checks.
-document.addEventListener('click',e=>{if(session.phase==='setup')return;const target=(e.target as Element).closest?.('#import-report,#data-confirm,#apply-task,#use-demo');if(target){e.preventDefault();e.stopImmediatePropagation();say('开战后导入及任务参数已锁定');}},true);
+document.addEventListener('click',e=>{if(session.phase==='setup')return;const target=(e.target as Element).closest?.('#import-report,#data-confirm,#data-confirm-conditions,#apply-task');if(target){e.preventDefault();e.stopImmediatePropagation();say('开战后导入及任务参数已锁定');}},true);
 document.addEventListener('change',e=>{if(session.phase!=='setup'&&(e.target as HTMLElement).id==='report-file'){e.stopImmediatePropagation();(e.target as HTMLInputElement).value='';}},true);
 $('fullscreen').onclick=()=>{if(document.fullscreenElement)void document.exitFullscreen();else void document.documentElement.requestFullscreen();};
 const resize=()=>{const rect=$('game').getBoundingClientRect();game.scale.resize(rect.width,rect.height);};window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);if(typeof ResizeObserver!=='undefined')new ResizeObserver(resize).observe($('game'));

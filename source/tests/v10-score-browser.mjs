@@ -37,9 +37,11 @@ try{
    assert.match(await page.locator('.element-row[data-stage=BUBBLE]').innerText(),/自动生效/);
    assert.match(await page.locator('[data-select=CUT]').innerText(),/切割/);
    await page.locator('#task-settings').click();
-   await page.locator('#pol-cut-ratio').fill('60');await page.locator('#pol-black-ratio').fill('30');
+   assert.equal(await page.locator('#task-dialog details,#task-dialog table,#task-dialog input[type=checkbox],#use-demo,#pol-cut-ratio').count(),0);
+   await page.locator('#budget').fill('19');
    await page.locator('#apply-task').click();
    assert.equal(await page.locator('#task-dialog').evaluate(e=>e.open),false);
+   assert.equal(await page.evaluate(()=>window.v10Session.scenario.budget),19);
   }
   for(const stage of ['BD','PI',...(bu==='TV'?['VI']:['OC_VI','LCM_VI'])])await page.locator('[data-plus='+stage+']').click();
   await page.locator('#battle-start').click();assert.equal(await page.evaluate(()=>window.v10Session.phase),'setup');
