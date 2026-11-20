@@ -1,26 +1,11 @@
 # V1.0 生产任务数据中心
 
-## V3 单入口
+从游戏顶部打开「生产任务数据中心」，点击「导入今日生产任务」，选择 V3.8 提取器生成的合并 JSON。核对 TV、MNT 和两个班次的数据后，点击「确认导入」。再次导入会同时替换期初、目标和计划。目标随当前页面任务保存，刷新后需要重新导入。旧版单日报仍可导入，计划显示「未导入」。
 
-点击「导入今日生产任务」，选择 `rw-combined-日期-时间.json`。实际 V3 导出使用根节点 `date / rows / targetBaseline / source`，并附 `productionPlan`：`kind: "rw-mdl-plan"`、`schemaVersion: 1`、`date / dateKey`、`rows`。每个计划行含 `model / sizeCode / bu / dayQty / nightQty / expectedDay / expectedNight`，其中四类预测键为 `POL / BD / NDF / FILM`。网页核验日期、BU、尺寸、班次及预测值，再按班次汇总取整。已按 V3 分好的黑胶不再次拆分。旧日报同一入口可读，确认后明确不沿用上一份计划。直接读取的是 ZIP 中的导出代码，浏览器测试使用同结构合成文件，未执行 Excel COM 或使用真实生产数据。
+V3.8 的根节点为 `date / rows / targetBaseline / source / productionPlan`。目标来自 `targetBaseline.rows[].target`，期初来自 `rows[].today`。计划的 `dayQty / nightQty` 和 `expectedDay / expectedNight` 分别对应白班和夜班。换班时使用同一份期初和目标快照。工序存在数值但无法映射时，预览列出原始名称和位置，确认操作会保留上一份任务。没有直接预测投料的工序显示「无直接新增 NG」。
 
-V3 未导出型号 OC／LCM 路线。MNT 可导入和核对计划；有实际预测批次且缺路线时，禁止用猜测路线开战。后续可在 `productionPlan.rules` 明确提供对应型号规则。构建目标为 Chrome 109，测试浏览器为本机 Chromium，未在公司旧电脑实测。
+TV、MNT 分开归集。普通维修工序合并 OC / LCM 的分项，重复的同工序快照只取一次。VI 单独保留 OC 和 LCM。预计 NDF 的型号须在预览标明 OC 或 LCM，也可通过 `productionPlan.rules[型号].panel` 提供。V3.8 脚本本身未导出这个属性。其他需要 VI 的 MNT 预计产品进入 OC VI。FA、Disa 和未分区共享数据排除在维修任务外。共享黑胶分配为 TV 20%（四舍五入）、MNT 取余量，已分配的黑胶保持原值。
 
-从游戏顶部进入。分别选择 RW 日报和生产计划 JSON，先看到两 BU 的预览，再确认。计划的白班／夜班分别取数；期初 WIP 只按日期使用日报整份时点存量。预计 NG 在首道工序显示，以 forecast 批次在演练到料时点进入；不代表实际 NG。FA/Disa 不入维修任务。无工区的共享黑胶按 20/80 分配，TV 四舍五入、MNT 取余量。同名不同值、共享量与已分区黑胶并存会拒绝，避免重复。
+贴胶工作量按祛除和 BD 的期初及预计新增之和乘以所选班次 COF/片。脱 POL 工作量按撕 POL 和贴 POL 的期初及预计新增求和。脱 POL 的展示期初含撕 POL 期初和本 BU 的原始脱 POL 期初，目标为 0。引擎只在原始工序建立物理批次。只有 POL 汇总数时，整批从撕 POL 进入，之后继续贴 POL，免去手动拆分。同份日报同时有汇总和工序明细时要求核对，避免重复。
 
-日报兼容现有 {date,rows:[{name,today,group?}],targetBaseline?:{version:1,rows:[{name,group,target}]}}。首次确认可保存双 BU 目标基准；以后默认保留已确认基准，替换需要再次确认。POL 汇总目标需明确撕 POL 的片数。目标基准保存在该浏览器；日报、计划、路线选择仅保留在当前页面。
-
-生产计划使用独立适配协议（工作线尚未提供实际产物，以下为本分支合成验收契约；之后需对照 BAT/VBS 实际 JSON）：
-
-```json
-{
-  "schema": "rw-mdl-plan",
-  "version": 1,
-  "records": [{"date":"20261120","rawModel":"AB238AAA1","day":2000,"night":1000,"source":"synthetic"}],
-  "rules": {"AB238AAA1":{"panel":"LCM","cut":true,"polBlack":false,"filmBlack":false}}
-}
-```
-
-同一日期及 BU 无有效计划行显示「未导入」。MNT 预测缺少型号 OC/LCM 时不猜测、阻止该 BU 开战，但允许在数据中心核对计划与已知的预测；补齐 rules 后重新导入。若日报只给 MNT 未分型岗位汇总，须明确选择该批的 OC／LCM 路线才能开战，已独立列出的 OC VI/LCM VI 保持各自归属。
-
-验证：TypeScript、Vite 及 25 项生产引擎回归；Chromium 合成日报、计划预览和确认、TV/MNT 不混算、黑胶分配、MNT 切割、换班保持期初、预测单独注入及目标不覆盖。使用 `node tests/v10-data-center.mjs` 运行浏览器用例。没有真实生产计划样本用于验收，未改提取 BAT/VBS，未发布。
+使用 `npm run build`、`node tests/v10-engine.cjs`、`node tests/v10-bu.cjs` 和 `node tests/v10-data-center.mjs` 验证。导入用例依据 `Rw wip.zip` 中的 V3.8 VBS 导出代码构造。附件只有提取工具和说明，实际生成的 JSON、真实日报和公司电脑仍待验收。

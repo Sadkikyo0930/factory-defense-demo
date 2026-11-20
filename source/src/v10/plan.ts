@@ -51,12 +51,13 @@ export function forecastPlan(rows:PlanRecord[],date:string,bu:Mode,shift:Shift,t
 export type ArrivalStrategy=(batch:ForecastBatch,index:number)=>number;
 export const demoArrival:ArrivalStrategy=(_b,i)=>(i%5+1)*3600;
 export interface ModelRule {panel?:'OC'|'LCM';cut?:boolean;polBlack?:boolean;filmBlack?:boolean}
-export function forecastLots(input:ReturnType<typeof forecastPlan>,mode:Mode,rules:Record<string,ModelRule>,arrival:ArrivalStrategy):Lot[]{
+export function forecastLots(input:ReturnType<typeof forecastPlan>,mode:Mode,rules:Record<string,ModelRule>,arrival:ArrivalStrategy,productionRouting=false):Lot[]{
  return input.batches.map((b,i)=>{
   const rule=rules[b.model];
-  if(!rule||(mode==='MNT'&&!rule.panel))throw Error('型号维修路径未确认：'+b.model);
-  const stage:Step=b.kind==='BD'?'REMOVE':b.kind==='POL'?'PEEL':b.kind==='FILM'?'FILM':mode==='TV'?'VI':rule.panel==='OC'?'OC_VI':'LCM_VI';
-  return {id:'forecast:'+b.kind+':'+i,mode,kind:b.kind,count:b.count,source:'forecast',stage,at:arrival(b,i),cof:2,mntPanel:rule.panel,cut:b.kind==='POL'&&rule.cut===true,black:b.kind==='POL'?rule.polBlack===true:b.kind==='FILM'&&rule.filmBlack===true};
+  if(!rule||(mode==='MNT'&&!rule.panel&&(!productionRouting||b.kind==='REVIEW')))throw Error('型号维修路径未确认：'+b.model);
+  const panel=productionRouting&&mode==='MNT'&&b.kind!=='REVIEW'?'OC':rule.panel;
+  const stage:Step=b.kind==='BD'?'REMOVE':b.kind==='POL'?'PEEL':b.kind==='FILM'?'FILM':mode==='TV'?'VI':panel==='OC'?'OC_VI':'LCM_VI';
+  return {id:'forecast:'+b.kind+':'+i,mode,kind:b.kind,count:b.count,source:'forecast',stage,at:arrival(b,i),cof:2,mntPanel:panel,cut:b.kind==='POL'&&rule.cut===true,black:b.kind==='POL'?rule.polBlack===true:b.kind==='FILM'&&rule.filmBlack===true};
  });
 }
 const demoModels={TV:['AB315AAA1','AB430AAA2'],MNT:['AB238AAA1','BAB270AAA2']} as const;

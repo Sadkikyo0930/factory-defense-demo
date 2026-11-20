@@ -26,7 +26,7 @@ const base=process.env.QA_BASE_URL||'http://127.0.0.1:4190/',out=path.resolve(pr
  const first=await page.evaluate(()=>JSON.parse(JSON.stringify(window.v10Session.result)));assert(first.simulation.conservation);assert(first.simulation.identityConservation);assert(first.simulation.successfulOut>0);assert(first.scoreBreakdown.total>=0&&first.scoreBreakdown.total<=100);await page.screenshot({path:path.join(out,'03-result-1280x720.png')});
  await page.locator('#result-retry').click();assert.equal(await page.evaluate(()=>JSON.stringify(window.v10Session.scenario)),setup.scenario);assert.deepEqual(await page.evaluate(()=>window.v10Session.formation),setup.formation);
  await startNamed(page);await page.locator('#skip-battle').click();await page.locator('#battle-result').waitFor({state:'visible'});const second=await page.evaluate(()=>window.v10Session.result);assert.deepEqual(first.simulation,second.simulation);assert.deepEqual(first.scoreBreakdown,second.scoreBreakdown);await page.locator('#result-retry').click();
- // The V1.0 import workflow is covered by v10-data-center.mjs and v10-target-browser.cjs.
+ // The V1.0 import workflow is covered by v10-data-center.mjs.
  // The legacy Excel format parser is covered by report-format.cjs.
  await page.setViewportSize({width:1920,height:1080});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:path.join(out,'04-wide-imported-snapshot.png')});
  // Same entry/project; Canvas renderer is a tested fallback, not Win7 acceptance.

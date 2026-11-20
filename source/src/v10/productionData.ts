@@ -1,9 +1,8 @@
-import {count,normalize,splitPOL} from '../report';
+import {count,normalize} from '../report';
 import {forecastPlan,forecastLots,validPlanDate,normalizePlan,demoArrival,ngKinds,ngRates, type ModelRule,type PlanRecord,type Shift} from './plan';
 import {clone,validate, type Mode,type Step,type Lot,type Kind,type Scenario} from './spec';
-import {buildTargetBaseline,type TargetBaseline,type TargetInput} from './targetBaseline';
 type Values=Partial<Record<Step,number>>;
-export interface RwSnapshot {date:string; opening:Record<Mode,Values>; target?:TargetInput}
+export interface RwSnapshot {date:string; opening:Record<Mode,Values>; targets:Record<Mode,Values>; warnings:string[]}
 export interface RwPlan {schema:'rw-mdl-plan';version:1;records:PlanRecord[];rules:Record<string,ModelRule>}
 export interface ProductionImport {kind:'combined'|'report'|'plan';rw?:RwSnapshot;plan?:RwPlan}
 function objectValue(value:unknown):Record<string,unknown>{
@@ -28,7 +27,7 @@ export function readProductionImport(raw:unknown):ProductionImport{
  return {kind:'report',rw:readRwSnapshot(data)};
 }
 const aliases:Record<string,Step|'TOTAL'>={祛除:'REMOVE',去除:'REMOVE',贴胶:'TAPE',BD:'BD',UV:'UV',撕POL:'PEEL',机器撕POL:'PEEL',贴POL:'POL',POL:'TOTAL',脱泡:'BUBBLE',共享脱POL:'BUBBLE',切割:'CUT',黑胶:'BLACK',覆膜:'FILM',贴膜:'FILM',修膜:'FILM',PI:'PI',VI:'VI',OCVI:'OC_VI',LCMVI:'LCM_VI',OUT:'OUT',
- 'VI/OUT':'VI','OCVI/OUT':'OC_VI','LCMVI/OUT':'LCM_VI',OC检验:'OC_VI',LCM检验:'LCM_VI',条件切割:'CUT',机器切割:'CUT',CUT:'CUT',黑胶维修:'BLACK'};
+ 'VI/OUT':'VI','OCVI/OUT':'OC_VI','LCMVI/OUT':'LCM_VI',OC:'OC_VI',LCM:'LCM_VI',OCOUT:'OC_VI',LCMOUT:'LCM_VI',OC检验:'OC_VI',LCM检验:'LCM_VI',条件切割:'CUT',机器切割:'CUT',CUT:'CUT',黑胶维修:'BLACK',脱POL:'BUBBLE'};
 function position(name:string,group:unknown,record?:Record<string,unknown>,location='日报'){
  const n=normalize(name),pref=/^(TV|MNT)/.exec(n)?.[1] as Mode|undefined,key=(pref?n.slice(pref.length):n).replace(/^[:：]/,'');
  if(/^(FA|DISA)/.test(key)||key.includes('拆解'))return;
@@ -36,69 +35,69 @@ function position(name:string,group:unknown,record?:Record<string,unknown>,locat
  const fail=(reason:string)=>{throw Error('日报工区冲突：'+reason+'；'+location+' '+JSON.stringify({name,group:group??null,sourceName:record?.sourceName,row:record?.row,column:record?.column}));};
  if(g&&!['TV','MNT','SHARED'].includes(g))fail('未知 group');
  if(pref&&g&&g!==pref)fail('岗位前缀 '+pref+' 与 group '+g+' 不一致');
- const stage=Object.prototype.hasOwnProperty.call(aliases,key)?aliases[key]:undefined;
+ if(g==='SHARED'&&!['黑胶','黑胶维修'].includes(key))return;
+ const alias=(k:string)=>Object.prototype.hasOwnProperty.call(aliases,k)?aliases[k]:undefined;
+ const leading=/^\(?(LCM|OC)\)?[:/]?(.+)$/.exec(key);
+ const trailing=/^(.+?)(?:\((LCM|OC)\)|[:/](LCM|OC))$/.exec(key);
+ const scope=(leading?.[1]??trailing?.[2]??trailing?.[3]) as 'OC'|'LCM'|undefined;
+ const stage=alias(key)??alias((leading?.[2]??trailing?.[1]??key).replace(/维修$/,''));
  if(!stage)return;
  const mode=pref??(g==='TV'||g==='MNT'?g:stage==='CUT'?'MNT':undefined);
  if(!mode&&stage!=='BLACK'){
   if(stage==='OC_VI'||stage==='LCM_VI')fail('检测岗位缺少明确 MNT 工区');
   return;
  }
- if(stage==='VI'&&mode==='MNT'||mode==='TV'&&['LCM_VI','OC_VI','CUT'].includes(stage))fail('此岗位不属于 '+mode);
- return {mode,stage};
+ if(mode==='TV'&&['LCM_VI','OC_VI','CUT'].includes(stage))fail('此岗位不属于 '+mode);
+ if(mode==='MNT'&&stage==='VI')return {mode,stage:scope==='LCM'?'LCM_VI' as const:'OC_VI' as const};
+ return {mode,stage,scope:stage==='OC_VI'||stage==='LCM_VI'?undefined:scope};
 }
-function collect(rows:unknown[],field:'today'|'target',ratio:number){
+function excluded(name:string,group:unknown){
+ const key=normalize(name).replace(/^(TV|MNT):?/,'');
+ const g=normalize(group);
+ return /^(FA|DISA)/.test(key)||key.includes('拆解')||g==='SHARED'||!g&&['脱泡','共享脱POL'].includes(key);
+}
+function collect(rows:unknown[],field:'today'|'target',warnings:string[]){
  const result:Record<Mode,Values>={TV:{},MNT:{}};
  const found=new Map<string,{mode?:Mode;stage:Step|'TOTAL';n:number}>();
  for(const [i,raw] of rows.entries()){
   if(!raw||typeof raw!=='object')throw Error('日报岗位记录无效');
   const r=raw as Record<string,unknown>;
   if(typeof r.name!=='string'||!r.name.trim())throw Error('日报岗位名称缺失');
-  const p=position(r.name,r.group,r,(field==='today'?'rows':'targetBaseline.rows')+'['+i+']');if(!p)continue;
+  const label=(field==='today'?'rows':'targetBaseline.rows')+'['+i+']';
+  const p=position(r.name,r.group,r,label);
   const value=r[field];if(value===null||value===undefined||value==='')continue;
+  if(!p){
+   if(!excluded(r.name,r.group))warnings.push(label+' 未映射：'+r.name);
+   continue;
+  }
   const n=count(value);if(n===null)throw Error('日报数值无效：'+r.name);
-  const key=(p.mode??'SHARED')+':'+p.stage,old=found.get(key);if(old&&old.n!==n)throw Error('日报岗位数值冲突：'+r.name);
+  const key=(p.mode??'SHARED')+':'+p.stage+':'+(p.scope??''),old=found.get(key);if(old&&old.n!==n)throw Error('日报岗位数值冲突：'+r.name);
   found.set(key,{...p,n});
  }
- for(const {mode,stage,n} of found.values()){
-  if(!mode){if(found.has('TV:BLACK')||found.has('MNT:BLACK'))throw Error('共享黑胶与分区黑胶同时存在，不能重复计算');const tv=Math.round(n*.2);result.TV.BLACK=tv;result.MNT.BLACK=n-tv;continue;}
-  if(stage==='TOTAL'){
-   if(found.has(mode+':PEEL')||found.has(mode+':POL'))throw Error(mode+' POL 汇总与明细重复');
-   if(field==='today'){const p=splitPOL(n,ratio);result[mode].PEEL=p.peel;result[mode].POL=p.pol;}
-  }else result[mode][stage]=n;
+ const has=(mode:Mode,stage:string)=>[...found.keys()].some(k=>k.startsWith(mode+':'+stage+':'));
+ for(const [key,{mode,stage,n}] of found){
+  if(!mode){if(has('TV','BLACK')||has('MNT','BLACK'))throw Error('共享黑胶与分区黑胶同时存在，不能重复计算');const tv=Math.round(n*.2);result.TV.BLACK=tv;result.MNT.BLACK=n-tv;continue;}
+  const dest=stage==='TOTAL'?'PEEL':stage;
+  if(stage==='TOTAL'&&(has(mode,'PEEL')||has(mode,'POL')))throw Error(mode+' POL 汇总与明细重复');
+  if(key.endsWith(':OC')||key.endsWith(':LCM'))if(found.has(mode+':'+stage+':'))throw Error(mode+' '+stage+' 工序汇总和 OC/LCM 明细并存，不能重复计算');
+  const total=(result[mode][dest]??0)+n;
+  if(!Number.isSafeInteger(total))throw Error(mode+' '+dest+' 合计超出安全整数');
+  result[mode][dest]=total;
  }
  return result;
 }
-export function readRwSnapshot(raw:unknown,ratio=.2):RwSnapshot{
- const r=raw as {date?:string;rows?:unknown[];targetBaseline?:TargetInput};
+export function readRwSnapshot(raw:unknown):RwSnapshot{
+ const r=raw as {date?:string;rows?:unknown[];targetBaseline?:{version:number;rows:unknown[]}};
  if(!r||typeof r.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||!validPlanDate(r.date.replace(/-/g,''))||!Array.isArray(r.rows)||!r.rows.length||r.rows.length>4000)throw Error('需要有效的 RW 日报 JSON：date 和 rows');
- const opening=collect(r.rows,'today',ratio);
+ const warnings:string[]=[],opening=collect(r.rows,'today',warnings);
  if(!Object.keys(opening.TV).length&&!Object.keys(opening.MNT).length)throw Error('未找到 TV / MNT 维修岗位数据');
- if(r.targetBaseline){
-  if(r.targetBaseline.version!==1||!Array.isArray(r.targetBaseline.rows)||r.targetBaseline.rows.length>2000)throw Error('日报目标格式无效');
-  collect(r.targetBaseline.rows,'target',ratio);
+ if(r.targetBaseline!==undefined){
+  if(!r.targetBaseline||r.targetBaseline.version!==1||!Array.isArray(r.targetBaseline.rows)||r.targetBaseline.rows.length>2000)throw Error('日报目标格式无效');
+  if(!r.targetBaseline.rows.length)throw Error('日报目标没有记录');
  }
- return {date:r.date,opening,target:r.targetBaseline};
-}
-export function confirmRwTargets(input:TargetInput,date:string,tvPeel?:number,mntPeel?:number){
- const rows=input.rows.filter(r=>position(r.name,r.group));
- const values=collect(rows,'target',.2);
- const normalized=rows.filter(r=>position(r.name,r.group)?.mode!==undefined);
- for(const [mode,peel] of [['TV',tvPeel],['MNT',mntPeel]] as const){
-  const totals=normalized.filter(r=>{const p=position(r.name,r.group);return p?.mode===mode&&p.stage==='TOTAL'&&count(r.target)!==null;});
-  if(!totals.length)continue;
-  const n=count(totals[0].target)!;
-  if(peel===undefined||count(peel)===null||peel>n)throw Error('请填写 '+mode+' POL 汇总中分给撕 POL 的目标片数（0～'+n+'）');
-  values[mode].PEEL=peel;values[mode].POL=n-peel;
- }
- const clean:TargetInput={version:1,rows:(['TV','MNT'] as const).flatMap(group=>Object.entries(values[group]).map(([stage,target])=>({group,name:Object.keys(aliases).find(k=>aliases[k]===stage)!,target})))};
- return buildTargetBaseline(clean,date);
-}
-export function baselineValues(b?:TargetBaseline):Record<Mode,Values>{
- if(!b)return {TV:{},MNT:{}};
- const tv={...b.tvTargets},mnt=collect(b.mntTargets,'target',.2).MNT;
- const shared=collect(b.rows.filter(r=>r.group==='SHARED'),'target',.2);
- if(shared.TV.BLACK!==undefined){tv.BLACK=shared.TV.BLACK;mnt.BLACK=shared.MNT.BLACK;}
- return {TV:tv,MNT:mnt};
+ const targets=r.targetBaseline?collect(r.targetBaseline.rows,'target',warnings):{TV:{},MNT:{}};
+ if(r.targetBaseline&&!Object.keys(targets.TV).length&&!Object.keys(targets.MNT).length)throw Error('目标记录没有可映射的 TV / MNT 岗位');
+ return {date:r.date,opening,targets,warnings};
 }
 export function readRwPlan(raw:unknown):RwPlan{
  const data=objectValue(raw);
@@ -147,10 +146,17 @@ export function projected(plan:RwPlan|undefined,date:string,mode:Mode,shift:Shif
  }
  return {result,values};
 }
-export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,plan:RwPlan|undefined,baseline:TargetBaseline|undefined,panel?:'OC'|'LCM'):Scenario{
+export function workload(opening:Values|undefined,forecast:Values|undefined,cof:number){
+ const sum=(...parts:(number|undefined)[])=>parts.some(n=>n!==undefined)?parts.reduce<number>((total,n)=>total+(n??0),0):undefined;
+ const tape=sum(opening?.REMOVE,forecast?.REMOVE,opening?.BD,forecast?.BD);
+ return {tape:tape===undefined?undefined:tape*cof,
+  bubble:sum(opening?.PEEL,forecast?.PEEL,opening?.POL,forecast?.POL),
+  bubbleOpening:sum(opening?.PEEL,opening?.BUBBLE)};
+}
+export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,plan:RwPlan|undefined):Scenario{
  const s=clone(base),mode=s.mode??'TV',shift=s.shift??'DAY',date=s.date??snapshot?.date.replace(/-/g,'')??'';
  const forecast=projected(plan,date,mode,shift);
- if(!snapshot&&!plan&&!baseline)return s;
+ if(!snapshot&&!plan)return s;
  s.productionBlock=undefined;
  s.lots=s.lots.filter(l=>l.source==='external'&&!base.synthetic);
  s.forecast=undefined;
@@ -159,11 +165,8 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
   for(const [key,n] of Object.entries(stages)){
    const stage=key as Step;
    if(!n)continue;
-   if(mode==='MNT'&&!panel&&stage!=='OC_VI'&&stage!=='LCM_VI'){
-    s.productionBlock='MNT 期初 WIP 须确认未分型批次的 OC / LCM 路线';continue;
-   }
    const kind:Kind=['PEEL','POL','BUBBLE','CUT','BLACK'].includes(stage)?'POL':stage==='FILM'?'FILM':['PI','VI','OC_VI','LCM_VI','OUT'].includes(stage)?'UNKNOWN':'BD';
-   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:2,mntPanel:mode==='MNT'?(stage==='OC_VI'?'OC':stage==='LCM_VI'?'LCM':panel):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined};
+   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:s.cofPerPiece??2,mntPanel:mode==='MNT'?(stage==='LCM_VI'?'LCM':'OC'):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined};
    s.lots.push(lot);
   }
   s.rawFA=0;
@@ -171,16 +174,16 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
  if(forecast&&plan){
   const rules:Record<string,ModelRule>=Object.create(null);
   for(const b of forecast.result.batches)rules[b.model]=plan.rules[b.model]??{};
-  if(mode==='MNT'&&forecast.result.batches.some(b=>!rules[b.model]?.panel)){
-   s.productionBlock='MNT 生产计划缺少型号 OC / LCM 路线；未注入预计 NG，补齐 rules 后重新导入';
-  }else s.lots.push(...forecastLots(forecast.result,mode,rules,demoArrival).map((lot,i)=>{
+  if(mode==='MNT'&&forecast.result.batches.some(b=>b.kind==='REVIEW'&&!rules[b.model]?.panel)){
+   s.productionBlock='MNT 生产计划缺少 NDF 型号的 OC / LCM 路线，请在导入预览中确认';
+  }else s.lots.push(...forecastLots(forecast.result,mode,rules,demoArrival,true).map((lot,i)=>{
    const rule=rules[forecast.result.batches[i].model];
-   return lot.kind==='POL'?{...lot,cut:rule.cut,black:rule.polBlack}:lot;
+   return {...lot,cof:s.cofPerPiece??2,...(lot.kind==='POL'?{cut:rule.cut,black:rule.polBlack}:{})};
   }));
   s.forecast={plan:forecast.result.plan,version:forecast.result.version,amounts:Object.fromEntries(ngKinds.map(k=>[k,forecast.result.diagnostic[k].count])) as NonNullable<Scenario['forecast']>['amounts']};
  }
  if(snapshot||plan){s.synthetic=false;s.id='production:'+mode+':'+shift+':'+date;s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date;s.sourceNote=(s.productionBlock?s.productionBlock+'。':'')+'期初为日报时点快照；预计 NG 是独立预测任务，到料时间为演练假设。';}
- s.targets=baselineValues(baseline)[mode];s.confirmedTargetsOnly=true;
+ s.targets=snapshot?.date.replace(/-/g,'')===date?{...snapshot.targets[mode],BUBBLE:0}:{};s.confirmedTargetsOnly=true;
  s.conditionalPOLConfirmed=!s.lots.some(l=>l.kind==='POL'&&l.count>0&&['PEEL','POL','BUBBLE'].includes(l.stage)&&(l.cut===undefined||l.black===undefined));
  validate(s,{},false);
  return s;
