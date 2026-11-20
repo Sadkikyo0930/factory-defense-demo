@@ -3,7 +3,7 @@ import {shiftScenario,type Shift} from './plan';
 import type {Mode} from './spec';
 import {challengeId, makeScore, playerName, scoreRepository, type ScoreRecord} from './scores';
 
-export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknown)=>void){
+export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknown)=>void,data?:{hasData():boolean;load(mode:Mode,shift:Shift,date:string):void}){
  const bar=document.createElement('section');bar.className='mode-controls';
  bar.innerHTML='<label>BU <select id="bu-mode"><option>TV</option><option>MNT</option></select></label><label>班次 <select id="work-shift"><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label><label>演练日期 <input id="scenario-date" type="date"></label><button id="score-history">历史成绩</button><span id="ng-summary"></span>';
  document.querySelector('header')!.after(bar);
@@ -12,7 +12,8 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
  const loadMode=()=>{
   try{
    if(session.phase!=='setup')throw Error('请先返回布阵');
-   session.setScenario(shiftScenario($<HTMLSelectElement>('bu-mode').value as Mode,$<HTMLSelectElement>('work-shift').value as Shift,date.value.replace(/-/g,'')));
+   const mode=$<HTMLSelectElement>('bu-mode').value as Mode,shift=$<HTMLSelectElement>('work-shift').value as Shift,key=date.value.replace(/-/g,'');
+   if(data?.hasData())data.load(mode,shift,key);else session.setScenario(shiftScenario(mode,shift,key));
    refresh();
   }catch(e){say(e);}
  };
@@ -55,8 +56,8 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
  return {
   begin(start:()=>boolean){run=start;$('player-error').textContent='';player.showModal();},
   update(){
-   bar.hidden=session.phase!=='setup'; const data=session.scenario.forecast;
-   $('ng-summary').textContent=data?'SYNTHETIC · 当班计划 '+data.plan+' · BD '+data.amounts.BD+' · POL '+data.amounts.POL+' · 过判 '+data.amounts.REVIEW+' · 膜 '+data.amounts.FILM+'（各类可能重叠）':'未载入预计 NG 演练；当前可使用既有 TV 情景。';
+   bar.hidden=session.phase!=='setup';const s=session.scenario; if(s.mode)$<HTMLSelectElement>('bu-mode').value=s.mode;if(s.shift)$<HTMLSelectElement>('work-shift').value=s.shift;if(s.date)date.value=s.date.replace(/^(....)(..)(..)$/,'$1-$2-$3');const data=s.forecast;
+   $('ng-summary').textContent=data?(s.synthetic?'SYNTHETIC':'已导入计划 · 预测')+' · 当班计划 '+data.plan+' · BD '+data.amounts.BD+' · POL '+data.amounts.POL+' · 过判 '+data.amounts.REVIEW+' · 膜 '+data.amounts.FILM+'（各类可能重叠）':'未载入预计 NG 演练；当前可使用既有 TV 情景。';
   },
   async finish(){
    if(!active||!session.result||session.phase!=='result'||saving||saved)return;
