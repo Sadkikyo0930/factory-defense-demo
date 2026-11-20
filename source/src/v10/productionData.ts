@@ -27,24 +27,33 @@ export function readProductionImport(raw:unknown):ProductionImport{
  if(type==='rw-mdl-plan')return {kind:'plan',plan:readRwPlan(data)};
  return {kind:'report',rw:readRwSnapshot(data)};
 }
-const aliases:Record<string,Step|'TOTAL'>={祛除:'REMOVE',去除:'REMOVE',贴胶:'TAPE',BD:'BD',UV:'UV',撕POL:'PEEL',机器撕POL:'PEEL',贴POL:'POL',POL:'TOTAL',脱泡:'BUBBLE',共享脱POL:'BUBBLE',切割:'CUT',黑胶:'BLACK',覆膜:'FILM',贴膜:'FILM',修膜:'FILM',PI:'PI',VI:'VI',OCVI:'OC_VI',LCMVI:'LCM_VI',OUT:'OUT'};
-function position(name:string,group:unknown){
- const n=normalize(name),pref=/^(TV|MNT)/.exec(n)?.[1] as Mode|undefined,key=pref?n.slice(pref.length):n;
- if(/^(FA|DISA)/.test(key))return;
- if(pref&&group&&group!=='SHARED'&&group!==pref)throw Error('日报工区冲突：'+name);
- const mode=pref??(group==='TV'||group==='MNT'?group:undefined),stage=Object.prototype.hasOwnProperty.call(aliases,key)?aliases[key]:undefined;
- if(!stage||(!mode&&stage!=='BLACK'))return;
- if(mode&&(stage==='VI'&&mode==='MNT'||mode==='TV'&&['LCM_VI','OC_VI','CUT'].includes(stage)))return;
+const aliases:Record<string,Step|'TOTAL'>={祛除:'REMOVE',去除:'REMOVE',贴胶:'TAPE',BD:'BD',UV:'UV',撕POL:'PEEL',机器撕POL:'PEEL',贴POL:'POL',POL:'TOTAL',脱泡:'BUBBLE',共享脱POL:'BUBBLE',切割:'CUT',黑胶:'BLACK',覆膜:'FILM',贴膜:'FILM',修膜:'FILM',PI:'PI',VI:'VI',OCVI:'OC_VI',LCMVI:'LCM_VI',OUT:'OUT',
+ 'VI/OUT':'VI','OCVI/OUT':'OC_VI','LCMVI/OUT':'LCM_VI',OC检验:'OC_VI',LCM检验:'LCM_VI',条件切割:'CUT',机器切割:'CUT',CUT:'CUT',黑胶维修:'BLACK'};
+function position(name:string,group:unknown,record?:Record<string,unknown>,location='日报'){
+ const n=normalize(name),pref=/^(TV|MNT)/.exec(n)?.[1] as Mode|undefined,key=(pref?n.slice(pref.length):n).replace(/^[:：]/,'');
+ if(/^(FA|DISA)/.test(key)||key.includes('拆解'))return;
+ const g=normalize(group);
+ const fail=(reason:string)=>{throw Error('日报工区冲突：'+reason+'；'+location+' '+JSON.stringify({name,group:group??null,sourceName:record?.sourceName,row:record?.row,column:record?.column}));};
+ if(g&&!['TV','MNT','SHARED'].includes(g))fail('未知 group');
+ if(pref&&g&&g!==pref)fail('岗位前缀 '+pref+' 与 group '+g+' 不一致');
+ const stage=Object.prototype.hasOwnProperty.call(aliases,key)?aliases[key]:undefined;
+ if(!stage)return;
+ const mode=pref??(g==='TV'||g==='MNT'?g:stage==='CUT'?'MNT':undefined);
+ if(!mode&&stage!=='BLACK'){
+  if(stage==='OC_VI'||stage==='LCM_VI')fail('检测岗位缺少明确 MNT 工区');
+  return;
+ }
+ if(stage==='VI'&&mode==='MNT'||mode==='TV'&&['LCM_VI','OC_VI','CUT'].includes(stage))fail('此岗位不属于 '+mode);
  return {mode,stage};
 }
 function collect(rows:unknown[],field:'today'|'target',ratio:number){
  const result:Record<Mode,Values>={TV:{},MNT:{}};
  const found=new Map<string,{mode?:Mode;stage:Step|'TOTAL';n:number}>();
- for(const raw of rows){
+ for(const [i,raw] of rows.entries()){
   if(!raw||typeof raw!=='object')throw Error('日报岗位记录无效');
   const r=raw as Record<string,unknown>;
   if(typeof r.name!=='string'||!r.name.trim())throw Error('日报岗位名称缺失');
-  const p=position(r.name,r.group);if(!p)continue;
+  const p=position(r.name,r.group,r,(field==='today'?'rows':'targetBaseline.rows')+'['+i+']');if(!p)continue;
   const value=r[field];if(value===null||value===undefined||value==='')continue;
   const n=count(value);if(n===null)throw Error('日报数值无效：'+r.name);
   const key=(p.mode??'SHARED')+':'+p.stage,old=found.get(key);if(old&&old.n!==n)throw Error('日报岗位数值冲突：'+r.name);
