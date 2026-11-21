@@ -456,7 +456,8 @@ try{
    assert.equal(await page.evaluate(()=>window.v10Session.phase),'setup');
   }
   await page.getByRole('button',{name:'确认开战'}).click();
-  await page.waitForFunction(()=>window.v10Session.phase==='battle');
+  const actualPhase=await page.evaluate(()=>window.v10Session.phase);
+  assert.equal(actualPhase,'battle',bu+'/'+sh+' start rejected: '+await page.locator('#player-error').innerText()+' / notice: '+await page.locator('#notice').innerText());
   await page.locator('#skip-battle').click();
   await page.locator('#battle-result').waitFor();
   assert.equal(await page.evaluate(()=>window.v10Session.phase),'result');
