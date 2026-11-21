@@ -1,7 +1,7 @@
 import type {BattleSession} from './session';
 import {attachProduction,projected,readProductionImport,taskRatios,workload,type ProductionImport,type RwPlan,type RwSnapshot} from './productionData';
 import {shiftScenario,validPlanDate,type Shift} from './plan';
-import {clone,stageLabel,visibleTowers,webVersion,splitPolRatios,type Mode,type PolRatios,type Scenario} from './spec';
+import {clone,defaultCofPerPiece,stageLabel,visibleTowers,webVersion,splitPolRatios,type Mode,type PolRatios,type Scenario} from './spec';
 
 
 export function setupDataCenter(session:BattleSession,changed:()=>void){
@@ -38,7 +38,15 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
   }catch{/* Storage can be unavailable; current-session settings still work. */}
  };
  const keyFor=(s:Scenario)=>cofKey(s.mode??'TV',s.shift??'DAY',s.date??(document.getElementById('scenario-date') as HTMLInputElement).value.replace(/-/g,''));
- const rememberCof=()=>{const s=session.scenario,key=cofKey(s.mode??'TV',s.shift??'DAY',s.date??dateValue());if(s.cofPerPiece!==undefined)cofByShift.set(key,s.cofPerPiece);};
+ const savedCof=(key:string)=>{
+  const current=cofByShift.get(key);
+  if(current!==undefined)return current;
+  try{
+   const saved=Number(localStorage.getItem('factory-cof-per-piece:'+key));
+   if(Number.isFinite(saved)&&saved>=.1&&saved<=20)return saved;
+  }catch{/* Use the default when browser storage is unavailable. */}
+  return defaultCofPerPiece;
+ };
  const selectedPlan=()=>draft?.kind==='report'?undefined:(draft?.plan??plan);
  function show(){
   const rw=draft?.rw??snapshot,p=selectedPlan();
@@ -74,25 +82,25 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
    const rows=table.createTBody();
    for(const stage of visibleTowers(scenario)){
     const row=rows.insertRow();row.dataset.stage=stage;
-    const op=dateMatched?rw?.opening[mode]:undefined,cof=cofByShift.get(settingsKey)??2,w=workload(op,forecast?.values,cof),split=forecast?.inspections[stage];
+    const op=dateMatched?rw?.opening[mode]:undefined,cof=savedCof(settingsKey),w=workload(op,forecast?.values,cof),split=forecast?.inspections[stage];
     const summary=dateMatched&&rw?.polSummary.has(mode);
     const added=forecast?(forecast.values[stage]??0):undefined;
     const estimated=stage==='TAPE'?(w.tapeAdded===undefined?undefined:w.tapeAdded+' COF'):added;
     const showOut=stage==='VI'||stage==='OC_VI';
     const outOpening=showOut&&op?.OUT!==undefined?'待 OUT '+op.OUT:undefined;
     const outTarget=showOut&&shownTargets[mode].OUT!==undefined?'待 OUT '+shownTargets[mode].OUT:undefined;
-    const opening=stage==='BUBBLE'?w.bubbleOpening:stage==='POL'&&summary?0:op?.[stage];
+    const opening=stage==='BUBBLE'?w.bubbleOpening:op?.[stage];
     const target=stage==='BUBBLE'||stage==='TAPE'?0:shownTargets[mode]?.[stage];
     const ordinary=opening===undefined&&added===undefined&&!outOpening?undefined:(opening??0)+(added??0)+(outOpening?op!.OUT!:0);
     const missing=[opening===undefined?'期初未导入':'',added===undefined?'预测未导入':''].filter(Boolean).join('，');
     const detail=stage==='TAPE'?(w.tape===undefined?'未导入':'总计 '+w.tape+' COF（期初祛除 '+(op?.REMOVE??'未导入')+'、BD '+(op?.BD??'未导入')+'；'+cof+'/片'+(forecast?'':'；预测未导入')+'）'+(op?.TAPE?'；另有独立贴胶库存 '+op.TAPE+' 片':'')):
-     stage==='BUBBLE'?(w.bubble===undefined?'未导入':w.bubble+' 片次（期初撕 '+(op?.PEEL??'未导入')+'、贴 '+(summary?0:op?.POL??'未导入')+
+     stage==='BUBBLE'?(w.bubble===undefined?'未导入':w.bubble+' 片次（期初撕 '+(op?.PEEL??'未导入')+'、贴 '+(op?.POL??'未导入')+
       (forecast?'；新增撕 '+(forecast.values.PEEL??0)+'、贴 '+(forecast.values.POL??0):'；预测未导入')+
-      (summary?'；期初 POL 汇总归撕 POL':'')+'）'):
+      (summary?'；期初汇总按 20%／80% 分配':'')+'）'):
      ordinary===undefined?'未导入':ordinary+' 片次'+(missing?'（'+missing+'）':'')+
       (split?'；NDF '+split.ndf+' / 维修后 '+split.repair+'；实际 OUT 见结算':'')+
       (stage==='BLACK'||stage==='CUT'?'（撕、贴新增合计 × '+Math.round(ratios[stage==='BLACK'?'blackRatio':'cutRatio']*10000)/100+'%）':'')+
-      (summary&&(stage==='PEEL'||stage==='POL')?'（期初 POL 汇总归撕 POL）':'');
+      (summary&&(stage==='PEEL'||stage==='POL')?'（期初汇总按 20%／80% 分配）':'');
     const openingText=stage==='TAPE'?(w.tapeOpening===undefined?undefined:w.tapeOpening+' COF'):outOpening?'待检 '+(opening??'未导入')+' / '+outOpening:opening;
     const v=[stageLabel(stage,scenario),openingText,estimated,outTarget?'待检 '+(target??'未导入')+' / '+outTarget:target,detail];
     for(const cell of v)row.insertCell().textContent=String(cell??'未导入');
@@ -104,9 +112,10 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
   $('data-preview-label').textContent=draft?.kind==='combined'?'合并文件预览：日报与计划将一次确认。':draft?.kind==='report'?'旧版日报预览：文件不含生产计划；确认后预计新增 NG 显示未导入。':draft?'仅生产计划预览：保留已确认的日报快照。':'';
  }
  function commit(mode:Mode,workShift:Shift,key:string,rw:RwSnapshot|undefined,p:RwPlan|undefined){
-  rememberCof();const current=session.scenario,keep=(current.mode??'TV')===mode&&(current.date===key||!current.date);
+  const current=session.scenario,keep=!!(rw||p)&&(current.mode??'TV')===mode&&(current.date===key||!current.date);
   const base=keep&&!current.synthetic?{...clone(current),shift:workShift,date:key}:shiftScenario(mode,workShift,key);
-  base.cofPerPiece=cofByShift.get(cofKey(mode,workShift,key))??2;
+  base.cofPerPiece=savedCof(cofKey(mode,workShift,key));
+  if(!rw&&!p)for(const lot of base.lots)lot.cof=base.cofPerPiece;
   base.polRatios=savedRatios(cofKey(mode,workShift,key));
   session.setProductionScenario(attachProduction(base,rw,p),keep);
  }
@@ -121,7 +130,7 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
   resetConditions();
   const s=session.scenario;
   date.value=s.date?.replace(/^(....)(..)(..)$/,'$1-$2-$3')||(document.getElementById('scenario-date') as HTMLInputElement).value;
-  shift.value=s.shift??'DAY';rememberCof();
+  shift.value=s.shift??'DAY';
  }
  entry.onclick=()=>{resetSelection();error('');show();dialog.showModal();};
  function discard(){revision++;draft=undefined;resetSelection();error('');show();}
@@ -156,7 +165,7 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
    const confirmIn=$<HTMLInputElement>('data-confirm-in').checked;
    if(!session.scenario.inConfirmed&&!confirmIn)throw Error('请先核对独立新增 IN 口径');
    session.confirmProductionConditions({confirmIn});
-   changed();rememberCof();resetConditions();error('开战条件已确认。');show();
+   changed();resetConditions();error('开战条件已确认。');show();
   }catch(e){error(e);}
  };
  function resetConditions(){
@@ -164,15 +173,20 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
  }
  function select(){try{resetConditions();error('');if(!draft&&(snapshot||plan)){commit(session.scenario.mode??'TV',selectedShift(),dateValue(),snapshot,plan);changed();}show();}catch(e){error(e);}}
  date.onchange=()=>{if(!draft?.rw)select();};shift.onchange=select;
- return {hasData:()=>!!(snapshot||plan),load:(mode:Mode,workShift:Shift,key:string)=>commit(mode,workShift,key,snapshot,plan),
+ return {load:(mode:Mode,workShift:Shift,key:string)=>commit(mode,workShift,key,snapshot,plan),
+  cofFor:(s:Scenario)=>savedCof(keyFor(s)),
   ratiosFor:(s:Scenario)=>taskRatios(!s.synthetic?plan:undefined,s.mode??'TV',s.shift??'DAY',savedRatios(keyFor(s))),
   saveTask(s:Scenario,ratios:Required<PolRatios>){
    const key=keyFor(s),mode=s.mode??'TV';
    s.polRatios=ratios;
    if(s.synthetic)s.lots=(['opening','external','forecast'] as const).flatMap(source=>splitPolRatios(s.lots.filter(lot=>lot.source===source),mode,ratios));
    session.updateScenario(s.synthetic?s:attachProduction(s,snapshot,plan));
-   polByShift.set(key,ratios);rememberCof();
-   try{localStorage.setItem('factory-pol-ratios:'+key,JSON.stringify(ratios));}catch{/* Current-session settings are still saved. */}
+   polByShift.set(key,ratios);
+   if(s.cofPerPiece!==undefined)cofByShift.set(key,s.cofPerPiece);
+   try{
+    localStorage.setItem('factory-pol-ratios:'+key,JSON.stringify(ratios));
+    if(s.cofPerPiece!==undefined)localStorage.setItem('factory-cof-per-piece:'+key,String(s.cofPerPiece));
+   }catch{/* Current-session settings are still saved. */}
    if(dialog.open)show();
   }};
 }

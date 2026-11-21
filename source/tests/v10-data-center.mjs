@@ -50,7 +50,7 @@ try{
  assert.deepEqual((await cells('MNT','CUT')).slice(1,4),['3','6','3']);
  assert.equal((await cells('TV','BLACK'))[1],'8');assert.equal((await cells('MNT','BLACK'))[1],'33');
  assert.deepEqual((await cells('MNT','REMOVE')).slice(1,4),['23','11','9']);
- assert.match((await cells('MNT','TAPE'))[4],/^总计 104 COF/);
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 156 COF/);
  assert.deepEqual((await cells('MNT','BUBBLE')).slice(1,4),['10','10','0']);
  assert.match((await cells('MNT','BUBBLE'))[4],/^29 片次/);
  assert.equal(await page.locator('#data-ndf-routes').count(),0);
@@ -104,12 +104,19 @@ try{
  assert.match(await page.locator('#data-preview-label').innerText(),/不含生产计划/);
  await page.locator('#data-confirm').click();assert.equal((await state()).targets.BD,0);
  assert.equal((await cells('TV','BD'))[1],'10');
- assert.equal((await state()).targets.PEEL,10);
+ assert.equal((await state()).targets.PEEL,2);assert.equal((await state()).targets.POL,8);
  const aggregate=(await state()).lots.filter(l=>l.kind==='POL'&&['PEEL','POL'].includes(l.stage));
- assert.ok(aggregate.every(l=>l.stage==='PEEL'));assert.equal(aggregate.reduce((n,l)=>n+l.count,0),6);
- assert.match((await cells('TV','BUBBLE'))[4],/^6 片次.*POL 汇总归撕 POL/);
+ assert.equal(aggregate.filter(l=>l.stage==='PEEL').reduce((n,l)=>n+l.count,0),1);
+ assert.equal(aggregate.filter(l=>l.stage==='POL').reduce((n,l)=>n+l.count,0),5);
+ assert.match((await cells('TV','BUBBLE'))[4],/^6 片次.*汇总按 20%／80% 分配/);
  assert.equal((await state()).forecast,undefined);
  assert.equal((await cells('TV','REMOVE'))[2],'未导入');
+ const detailRows=[...legacy.rows.filter(r=>r.name!=='TV POL'),
+  {name:'TV POL',today:50,target:60},{name:'TV撕POL',today:2,target:3},{name:'TV贴POL',today:8,target:9}];
+ await file('production-json',{date,rows:detailRows,targetBaseline:{version:1,rows:detailRows}});
+ assert.deepEqual((await cells('TV','PEEL')).slice(1,4),['2','未导入','3']);
+ assert.deepEqual((await cells('TV','POL')).slice(1,4),['8','未导入','9']);
+ await page.locator('#data-discard').click();
  // V3.7 emits already-allocated black glue rows; the game must not split them again.
  const allocated=['TV','MNT'].map((group,i)=>({name:group+'黑胶',group,today:i?33:8,allocation:'blackGlue-20-80',sourceName:'黑胶',row:99,column:12}));
  await file('production-json',{...combined,rows:[...combined.rows.filter(r=>r.name!=='黑胶'),...allocated],productionPlan:{...plan,rules}});
@@ -133,17 +140,19 @@ try{
  assert.equal(await page.locator('#pol-black-ratio').inputValue(),'30');
  assert.equal(await page.locator('#pol-cut-ratio').inputValue(),'30');
  await page.screenshot({path:'artifacts/v10-compact-task.png'});
- await page.locator('#budget').fill('18');await page.locator('#cof').fill('3');
+ assert.equal(await page.locator('#budget').count(),0);
+ assert.equal(await page.locator('#cof').inputValue(),'3');
+ await page.locator('#cof').fill('2');
  await page.locator('#pol-black-ratio').fill('101');await page.locator('#apply-task').click();assert.deepEqual(await state(),beforeSettings);
  await page.locator('#pol-black-ratio').fill('20');await page.locator('#pol-cut-ratio').fill('50');await page.locator('#apply-task').click();
- assert.equal((await state()).budget,18);assert.equal((await state()).cofPerPiece,3);
+ assert.equal((await state()).cofPerPiece,2);
  await page.locator('#import-report').click();
- assert.equal((await cells('MNT','TAPE'))[2],'30 COF');assert.match((await cells('MNT','TAPE'))[4],/^总计 120 COF/);
+ assert.equal((await cells('MNT','TAPE'))[2],'20 COF');assert.match((await cells('MNT','TAPE'))[4],/^总计 80 COF/);
  await page.locator('#data-shift').selectOption('DAY');
- assert.match((await cells('MNT','TAPE'))[4],/^总计 104 COF/);
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 156 COF/);
  assert.equal((await cells('MNT','CUT'))[2],'6');
  await page.locator('#data-shift').selectOption('NIGHT');
- assert.match((await cells('MNT','TAPE'))[4],/^总计 120 COF/);
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 80 COF/);
  assert.equal((await state()).conditionalPOLConfirmed,true);
  assert.equal((await cells('MNT','CUT'))[2],'5');
  assert.equal((await cells('MNT','BLACK'))[2],'2');
@@ -163,9 +172,9 @@ try{
  await page.waitForFunction(()=>window.v10Scene?.ready);
  await page.locator('#import-report').click();
  assert.equal((await cells('TV','BD'))[3],'未导入');
- assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.4');
- assert.match(await page.title(),/V1\.0-rw38\.4/);
- assert.equal(await page.locator('header .brand em').innerText(),'V1.0-rw38.4');
+ assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.5');
+ assert.match(await page.title(),/V1\.0-rw38\.5/);
+ assert.equal(await page.locator('header .brand em').innerText(),'V1.0-rw38.5');
  const jobs=[
   ['REMOVE','祛除'],['TAPE','贴胶'],['BD','BD'],['UV','UV'],['PEEL','撕 POL'],['POL','贴 POL'],
   ['BLACK','黑胶'],['FILM','贴膜'],['PI','PI'],['OUT','OUT']
@@ -253,7 +262,7 @@ try{
    assert.deepEqual([values[1],values[3]],[String(opening),String(target)],group+' '+stage);
   }
  };
- const extraRows=[{name:'TV PI',group:'TV',row:61,today:7,target:8},{name:'TV PI',group:'TV',row:62,today:7,target:8},
+ const extraRows=[{name:'TV PI',group:'TV',row:61,today:7,target:8},{name:'TV PI',group:'TV',row:63,today:7,target:8},
   {name:'FA',group:'SHARED',row:30,today:900,target:900},{name:'Disa',group:'TV',row:31,today:900,target:900}];
  for(const withArea of [false,true]){
   const observations=pairs.flatMap(([start,name,group,today,target])=>[start,start+1].map(row=>({name,group,row,today,target,start}))).concat(extraRows);
@@ -290,12 +299,12 @@ try{
  ratios:{TV:{NIGHT:{blackRatio:0}}}};
  await file('production-json',{...loaded,productionPlan:routedPlan});
  for(const [group,expected] of Object.entries({
-  TV:{REMOVE:86,TAPE:'344 COF',BD:86,UV:86,PEEL:57,POL:57,BUBBLE:57,BLACK:34,FILM:2,PI:143,VI:621},
-  MNT:{REMOVE:207,TAPE:'828 COF',BD:207,UV:207,PEEL:158,POL:158,BUBBLE:158,CUT:95,BLACK:95,FILM:18,PI:365,OC_VI:1144,LCM_VI:600}
+  TV:{REMOVE:86,TAPE:'516 COF',BD:86,UV:86,PEEL:57,POL:57,BUBBLE:57,BLACK:34,FILM:2,PI:143,VI:621},
+  MNT:{REMOVE:207,TAPE:'1242 COF',BD:207,UV:207,PEEL:158,POL:158,BUBBLE:158,CUT:95,BLACK:95,FILM:18,PI:365,OC_VI:1144,LCM_VI:600}
  }))for(const [stage,count] of Object.entries(expected))assert.equal((await cells(group,stage))[2],String(count),group+' '+stage);
  assert.equal((await cells('TV','OUT')).length+(await cells('MNT','OUT')).length,0);
- assert.match((await cells('TV','TAPE'))[4],/^总计 352 COF/);
- assert.match((await cells('MNT','TAPE'))[4],/^总计 916 COF/);
+ assert.match((await cells('TV','TAPE'))[4],/^总计 528 COF/);
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 1374 COF/);
  assert.match((await cells('MNT','OC_VI'))[4],/NDF 761 \/ 维修后 383/);
  assert.match((await cells('MNT','LCM_VI'))[4],/NDF 600 \/ 维修后 0/);
  await page.locator('#data-confirm').click();
@@ -310,37 +319,55 @@ try{
  await page.locator('#close-data').click();
  await page.locator('#bu-mode').selectOption('MNT');
  assert.equal(forecastTotal(await state()),1744);
+ // Synthetic row lattice anchored to the V3.8 report structure.
  const mockRows=[
-  ['TV祛除','TV',12,123],['TV BD','TV',34,140],['TV UV','TV',5,8],['TV撕POL','TV',7,4],['TV贴POL','TV',11,6],
-  ['TV脱POL','TV',4,7],['TV贴膜','TV',2,1],['TV PI','TV',6,5],['TV VI','TV',17,10],['TV OUT','TV',3,2],
-  ['MNT祛除','MNT',31,133],['MNT BD','MNT',56,150],['MNT UV','MNT',8,10],['MNT撕POL','MNT',13,8],
-  ['MNT贴POL','MNT',12,9],['MNT脱POL','MNT',6,11],['MNT切割','MNT',4,3],['MNT贴膜','MNT',3,2],
-  ['MNT PI','MNT',8,7],['MNT OC','MNT',101,54],['MNT模组','MNT',37,89],['MNT OUT','MNT',5,4],
-  ['黑胶','SHARED',55,65]
- ].map(([name,group,today,target])=>({name,group,today,target}));
- const exact={...makeFull(mockRows),productionPlan:routedPlan};
- await page.locator('#import-report').click();
- await file('production-json',exact);await page.locator('#data-confirm').click();await page.locator('#close-data').click();
- await page.locator('#bu-mode').selectOption('TV');
- await page.locator('#task-settings').click();
- assert.equal(await page.locator('#pol-black-ratio').inputValue(),'30');
- assert.equal(await page.locator('#pol-cut-ratio').isVisible(),false);
- await page.locator('#cof').fill('3');await page.locator('#apply-task').click();
- await page.locator('#import-report').click();
+  [49,'TV祛除','TV',12,123],[51,'MNT祛除','MNT',31,133],[53,'TV BD','TV',34,140],[55,'MNT BD','MNT',56,150],
+  [57,'TV UV','TV',5,8],[59,'MNT UV','MNT',8,10],[61,'TV POL','TV',22,30],[63,'MNT POL','MNT',45,55],
+  [65,'MNT切割','MNT',4,3],[67,'TV贴膜','TV',2,1],[69,'MNT贴膜','MNT',3,2],
+  [71,'TV PI','TV',6,5],[73,'MNT PI','MNT',8,7],[75,'黑胶','SHARED',55,65],[77,'TV VI','TV',17,10],
+  [79,'TV OUT','TV',3,2],[81,'MNT OC','MNT',77,45],[83,'MNT模组','MNT',31,70],
+  [87,'MNT OC','MNT',24,9],[89,'MNT模组','MNT',6,19]
+ ].map(([row,name,group,today,target])=>({row,name,group,today,target}));
  const expectedOpening={
-  TV:{REMOVE:[12,86,123,98],TAPE:[138,516,0,654],BD:[34,86,140,120],UV:[5,86,8,91],PEEL:[7,57,4,64],
-   POL:[11,57,6,68],BUBBLE:[11,57,0,132],BLACK:[11,34,13,45],FILM:[2,2,1,4],PI:[6,143,5,149],VI:['待检 17 / 待 OUT 3',621,'待检 10 / 待 OUT 2',641]},
-  MNT:{REMOVE:[31,207,133,238],TAPE:[174,828,0,1002],BD:[56,207,150,263],UV:[8,207,10,215],PEEL:[13,158,8,171],
-   POL:[12,158,9,170],BUBBLE:[19,158,0,341],CUT:[4,95,3,99],BLACK:[44,95,52,139],FILM:[3,18,2,21],PI:[8,365,7,373],
-   OC_VI:['待检 101 / 待 OUT 5',1144,'待检 54 / 待 OUT 4',1250],LCM_VI:[37,600,89,637]}
+  TV:{REMOVE:[12,86,123,98],TAPE:[138,516,0,654],BD:[34,86,140,120],UV:[5,86,8,91],PEEL:[4,57,6,61],
+   POL:[18,57,24,75],BUBBLE:[4,57,0,136],BLACK:[11,34,13,45],FILM:[2,2,1,4],PI:[6,143,5,149],VI:['待检 17 / 待 OUT 3',621,'待检 10 / 待 OUT 2',641]},
+  MNT:{REMOVE:[31,207,133,238],TAPE:[261,1242,0,1503],BD:[56,207,150,263],UV:[8,207,10,215],PEEL:[9,158,11,167],
+   POL:[36,158,44,194],BUBBLE:[9,158,0,361],CUT:[4,95,3,99],BLACK:[44,95,52,139],FILM:[3,18,2,21],PI:[8,365,7,373],
+   OC_VI:[101,1144,54,1245],LCM_VI:[37,600,89,637]}
  };
- for(const [group,stages] of Object.entries(expectedOpening))for(const [stage,[opening,added,target,total]] of Object.entries(stages)){
-  const row=await cells(group,stage),cof=stage==='TAPE'?' COF':'';
-  assert.deepEqual(row.slice(1,4),[opening+cof,added+cof,String(target)],group+' '+stage);
-  assert.ok(row[4].startsWith(cof?'总计 '+total+cof:total+' 片次'),group+' '+stage+' total: '+row[4]);
+ const matrixPayload=(withArea,records=mockRows,productionPlan=routedPlan)=>{
+  const metric=(column)=>records.flatMap(r=>[r.row,r.row+1].map(row=>({...r,row,column,
+   ...(withArea?{mergeArea:{startRow:r.row,endRow:r.row+1,startColumn:column,endColumn:column}}:{})})));
+  return {date,source:{tool:'rw-win7-vbs'},rows:metric(12),targetBaseline:{version:1,rows:metric(11)},productionPlan};
+ };
+ await page.locator('#import-report').click();
+ for(const withArea of [false,true]){
+  const reportRows=withArea?mockRows:mockRows.flatMap(r=>r.group!=='SHARED'?[r]:['TV','MNT'].map(group=>({
+   ...r,group,name:group+'黑胶',sourceName:'黑胶',allocation:'blackGlue-20-80',
+   today:r.today*(group==='TV'?.2:.8),target:r.target*(group==='TV'?.2:.8)
+  })));
+  await file('production-json',matrixPayload(withArea,reportRows));
+  for(const [group,stages] of Object.entries(expectedOpening))for(const [stage,[opening,added,target,total]] of Object.entries(stages)){
+   const row=await cells(group,stage),cof=stage==='TAPE'?' COF':'';
+   assert.deepEqual(row.slice(1,4),[opening+cof,added+cof,String(target)],group+' '+stage+' mergeArea='+withArea);
+   assert.ok(row[4].startsWith(cof?'总计 '+total+cof:total+' 片次'),group+' '+stage+' total: '+row[4]);
+  }
+  await page.locator('#data-confirm').click();
  }
- await page.screenshot({path:'artifacts/v10-rw38-4-workload.png'});
- await page.locator('#close-data').click();await page.locator('#bu-mode').selectOption('MNT');
+ const openingTotal=s=>s.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0);
+ assert.equal(openingTotal(await state()),337); // Includes the MNT share of shared black glue.
+ assert.equal(forecastTotal(await state()),1744);
+ await page.screenshot({path:'artifacts/v10-rw38-5-workload.png'});
+ const beforeDuplicate=await state(),invalidDuplicate=matrixPayload(false);
+ invalidDuplicate.targetBaseline.rows.find(r=>r.row===58).target+=1;
+ await page.locator('#production-json').setInputFiles({name:'bad-legacy-merge.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(invalidDuplicate))});
+ await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('Excel 第 58 行'));
+ assert.deepEqual(await state(),beforeDuplicate);
+ await page.locator('#close-data').click();
+ await page.locator('#bu-mode').selectOption('TV');assert.equal(openingTotal(await state()),112);
+ await page.locator('#task-settings').click();
+ assert.equal(await page.locator('#cof').inputValue(),'3');assert.equal(await page.locator('#pol-cut-ratio').isVisible(),false);
+ await page.locator('#close-task').click();await page.locator('#bu-mode').selectOption('MNT');
  for(const [ratio,expected] of [['0',0],['100',316],['30',95]]){
   await page.locator('#task-settings').click();await page.locator('#pol-black-ratio').fill(ratio);await page.locator('#pol-cut-ratio').fill(ratio);
   await page.locator('#apply-task').click();await page.locator('#import-report').click();
@@ -361,7 +388,7 @@ try{
  const revisedPlan={...routedPlan,rows:routedPlan.rows.map(r=>r.model===lcmModel?{...r,expectedDay:{...r.expectedDay,BD:r.expectedDay.BD+1}}:r),ratios:{...routedPlan.ratios,
   MNT:{...routedPlan.ratios.MNT,DAY:{blackRatio:.5,cutRatio:.25}}}};
  const revisedRows=mockRows.map(r=>r.name==='MNT BD'?{...r,today:r.today+1,target:r.target+2}:r);
- await file('production-json',{...makeFull(revisedRows),productionPlan:revisedPlan});
+ await file('production-json',matrixPayload(true,revisedRows,revisedPlan));
  assert.equal((await cells('MNT','BLACK'))[2],'95');
  assert.equal((await cells('MNT','CUT'))[2],'95');
  await page.locator('#data-confirm').click();
@@ -372,11 +399,13 @@ try{
  await page.locator('#task-settings').click();
  assert.equal(await page.locator('#pol-black-ratio').inputValue(),'20');
  assert.equal(await page.locator('#pol-cut-ratio').inputValue(),'50');
+ assert.equal(await page.locator('#cof').inputValue(),'2');
  await page.locator('#close-task').click();await page.locator('#work-shift').selectOption('DAY');await page.locator('#task-settings').click();
  assert.equal(await page.locator('#pol-black-ratio').inputValue(),'30');
  assert.equal(await page.locator('#pol-cut-ratio').inputValue(),'30');
+ assert.equal(await page.locator('#cof').inputValue(),'3');
  await page.locator('#close-task').click();
- console.log('PASS rw38.4 TV/MNT complete route matrix, configured black/cut, skipped unsupported size, no duplicate OUT or physical forecast');
+ console.log('PASS rw38.5 full TV/MNT matrix in both formats, POL split, COF defaults and saved shift scope, no duplicate physical inventory');
  console.log('PASS rw38.3 legacy layout and mergeArea imports, exact WIP/target reconciliation, auto NDF routing, shift isolation, and atomic rollback');
  assert.deepEqual(errors,[]);console.log('PASS V3.8-shaped import, atomic rollback, fresh targets, scoped jobs, NDF routing, independent COF, derived bubble WIP and physical conservation');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

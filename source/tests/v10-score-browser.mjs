@@ -21,6 +21,7 @@ try{
   await page.locator('#scenario-date').fill('2026-11-19');
   if(await page.locator('#bu-mode').inputValue()!==bu)await page.locator('#bu-mode').selectOption(bu);
   await page.waitForFunction(({bu,shift})=>window.v10Session.scenario.mode===bu&&window.v10Session.scenario.shift===shift,{bu,shift});
+  assert.equal(await page.evaluate(()=>window.v10Session.scenario.cofPerPiece),3);
   assert.equal(await page.locator('#apply-mode').count(),0);
   assert.equal(await page.locator('[data-plus=VI]').count(),bu==='TV'?1:0);
   assert.equal(await page.locator('[data-plus=OC_VI]').count(),bu==='MNT'?1:0);
@@ -32,16 +33,18 @@ try{
     assert.equal(await page.locator('#count-'+stage).innerText(),String(max));assert.ok(await add.isDisabled());
    }
    assert.deepEqual(await page.evaluate(()=>window.v10Session.formation),{PEEL:[1],OC_VI:[1,2,3,4],LCM_VI:[1,2]});
-   assert.equal(await page.locator('#staff-count').innerText(),'7 / 20');
-   for(const [stage,max] of [['PEEL',1],['OC_VI',4],['LCM_VI',2]])for(let i=0;i<max;i++)await page.locator('[data-minus='+stage+']').click();
+   assert.equal(await page.locator('#staff-count').innerText(),'7');
+   for(const add of await page.locator('[data-plus]').all())while(await add.isEnabled())await add.click();
+   assert.equal(await page.locator('#staff-count').innerText(),'22');
+   await page.locator('#clear-formation').click();
    assert.match(await page.locator('.element-row[data-stage=BUBBLE]').innerText(),/自动生效/);
    assert.match(await page.locator('[data-select=CUT]').innerText(),/切割/);
    await page.locator('#task-settings').click();
    assert.equal(await page.locator('#task-dialog details,#task-dialog table,#task-dialog input[type=checkbox],#use-demo').count(),0);
-   await page.locator('#budget').fill('19');
+   assert.equal(await page.locator('#budget').count(),0);
    await page.locator('#apply-task').click();
    assert.equal(await page.locator('#task-dialog').evaluate(e=>e.open),false);
-   assert.equal(await page.evaluate(()=>window.v10Session.scenario.budget),19);
+   assert.equal(await page.evaluate(()=>window.v10Session.scenario.cofPerPiece),3);
   }
   for(const stage of ['BD','PI',...(bu==='TV'?['VI']:['OC_VI','LCM_VI'])])await page.locator('[data-plus='+stage+']').click();
   await page.locator('#battle-start').click();assert.equal(await page.evaluate(()=>window.v10Session.phase),'setup');

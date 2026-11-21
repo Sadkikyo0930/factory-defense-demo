@@ -13,7 +13,7 @@ const base=process.env.QA_BASE_URL||'http://127.0.0.1:4190/',out=path.resolve(pr
  const portrait=await bubble.boundingBox();
  const target=await p.evaluate(()=>{const w=window.v10Scene.world,r=window.v10Game.canvas.getBoundingClientRect();return {x:r.left+w.x+75*w.scaleX,y:r.top+w.y+435*w.scaleY};});
  await p.mouse.move(portrait.x+portrait.width/2,portrait.y+portrait.height/2);await p.mouse.down();await p.mouse.move(target.x,target.y,{steps:10});await p.mouse.up();
- assert.equal(await bubbleOnField(),true);assert.equal(await p.locator('#staff-count').innerText(),'0 / 20');
+ assert.equal(await bubbleOnField(),true);assert.equal(await p.locator('#staff-count').innerText(),'0');
  assert(await p.locator('[data-plus=BUBBLE]').isDisabled());
  await p.locator('[data-minus=BUBBLE]').click();assert.equal(await bubbleOnField(),false);
  const all=await p.locator('[data-plus]').evaluateAll(nodes=>nodes.map(n=>n.dataset.plus));for(const stage of all){const add=p.locator(`[data-plus=${stage}]`);while(await add.isEnabled())await add.click();assert(await add.isDisabled());}
@@ -21,16 +21,15 @@ const base=process.env.QA_BASE_URL||'http://127.0.0.1:4190/',out=path.resolve(pr
  const minus=await p.locator('[data-minus=REMOVE]');
  await minus.click();assert.equal(await p.locator('#count-REMOVE').innerText(),'2');assert.equal(await p.locator('#count-TAPE').innerText(),'1');
  await p.locator('#clear-formation').click();
- await p.evaluate(()=>window.v10Session.updateScenario({...window.v10Session.scenario,budget:1}));await p.locator('#clear-formation').click();
- await p.locator('[data-plus=REMOVE]').click();assert(await p.locator('[data-plus=BD]').isDisabled());
- assert.equal(await p.locator('[data-plus=BD]').getAttribute('title'),'预算已满');
- await p.locator('[data-minus=REMOVE]').click();assert(await p.locator('[data-plus=BD]').isEnabled());
- await p.evaluate(()=>window.v10Session.updateScenario({...window.v10Session.scenario,budget:20}));await p.locator('#clear-formation').click();
+ await p.locator('[data-plus=REMOVE]').click();assert(await p.locator('[data-plus=BD]').isEnabled());
  // Use a realistic one-per-role formation and two specified VI posts for the visual recording.
  await p.locator('#clear-formation').click();for(const stage of all)if(stage!=='VI')await p.locator(`[data-plus=${stage}]`).click();await p.locator('[data-select=VI]').click();
- for(const x of [295,355]){
+ for(const [slot,x] of [[2,295],[4,355]]){
   const point=await p.evaluate(x=>{const w=window.v10Scene.world,r=window.v10Game.canvas.getBoundingClientRect();return {x:r.left+w.x+x*w.scaleX,y:r.top+w.y+577*w.scaleY};},x);
-  await p.mouse.click(point.x,point.y);await p.waitForTimeout(75);
+  await p.mouse.move(point.x,point.y);
+  await p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await p.mouse.click(point.x,point.y,{delay:50});
+  await p.waitForFunction(slot=>window.v10Session.formation.VI?.includes(slot),slot);
  }
  assert.deepStrictEqual(await p.evaluate(()=>window.v10Session.formation.VI),[2,4]);
  await p.locator('.roster').evaluate(el=>el.scrollTop=0);
@@ -77,5 +76,5 @@ const base=process.env.QA_BASE_URL||'http://127.0.0.1:4190/',out=path.resolve(pr
  await p.locator('#result-retry').click();await p.locator('#clear-formation').click();await startNamed(p);await p.waitForFunction(()=>window.v10Scene.combat.debug.time>1.5);assert.equal(await p.evaluate(()=>window.v10Scene.combat.telemetry.casts.length),0);await p.locator('#skip-battle').click();await p.locator('#battle-result').waitFor({state:'visible'});
  // Actual Canvas renderer exercises the same art, motion and result flow.
  const canvas=await browser.newPage({viewport:{width:1280,height:720}});canvas.on('pageerror',e=>errors.push(e.message));await canvas.goto(base+'?qa&renderer=canvas');await canvas.waitForFunction(()=>window.v10Scene?.ready);await canvas.locator('[data-plus=VI]').click();await startNamed(canvas);await canvas.waitForFunction(()=>window.v10Scene.combat.debug.time>1.4);assert.equal(await canvas.evaluate(()=>window.v10Game.renderer.type),1);await canvas.screenshot({path:path.join(out,'08-canvas-fallback.png')});await canvas.locator('#skip-battle').click();await canvas.locator('#battle-result').waitFor({state:'visible'});await canvas.close();
- assert.deepStrictEqual(errors,[]);assert.deepStrictEqual(failed,[]);fs.writeFileSync(path.join(out,'combat-browser-results.json'),JSON.stringify({browser:browser.version(),url:base,viewports:['1280x720','1600x900'],durationMs:elapsed,all18SlotsDeployable:true,rosterWidth:roster.width,buttonSize:plus.width,budgetLimit:true,adjacentRoleUnchanged:true,pageScaleEmulation:true,fourLanes:true,threeWaves:true,monsterEquipmentTexturesLoaded:false,fullBattlefield:true,staggeredEntry:true,leftwardMovement:true,noCombatHPNumbers:true,singleDynamicHP:true,sourceSpecificSquads:true,minimumHeroPixelHeight:Math.min(...bounds.actors.map(a=>a.height)),skills:[...castStages],maxActiveEffects:telemetry.maxActiveEffects,outcomes:telemetry.outcomes,defaultDetailCollapsed:true,exactReplay:true,noUnstaffedAttack:true,canvasFallback:true,score:result.scoreBreakdown,errors,failed,win7Chrome109:false,companyHardware:false},null,2));console.log('PASS combat visuals: real entry and movement, 11 skills, numeric-free current HP, faithful outcomes, 5s finish, collapsed results, 1280/1600, no staff/no attack, Canvas, exact replay');
+ assert.deepStrictEqual(errors,[]);assert.deepStrictEqual(failed,[]);fs.writeFileSync(path.join(out,'combat-browser-results.json'),JSON.stringify({browser:browser.version(),url:base,viewports:['1280x720','1600x900'],durationMs:elapsed,all18SlotsDeployable:true,rosterWidth:roster.width,buttonSize:plus.width,noGlobalHeadcountLimit:true,adjacentRoleUnchanged:true,pageScaleEmulation:true,fourLanes:true,threeWaves:true,monsterEquipmentTexturesLoaded:false,fullBattlefield:true,staggeredEntry:true,leftwardMovement:true,noCombatHPNumbers:true,singleDynamicHP:true,sourceSpecificSquads:true,minimumHeroPixelHeight:Math.min(...bounds.actors.map(a=>a.height)),skills:[...castStages],maxActiveEffects:telemetry.maxActiveEffects,outcomes:telemetry.outcomes,defaultDetailCollapsed:true,exactReplay:true,noUnstaffedAttack:true,canvasFallback:true,score:result.scoreBreakdown,errors,failed,win7Chrome109:false,companyHardware:false},null,2));console.log('PASS combat visuals: real entry and movement, 11 skills, numeric-free current HP, faithful outcomes, 5s finish, collapsed results, 1280/1600, no staff/no attack, Canvas, exact replay');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1);});

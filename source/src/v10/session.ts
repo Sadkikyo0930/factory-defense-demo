@@ -1,4 +1,4 @@
-import {Scenario,Formation,Step,Kind,clone,freeze,demoScenario,stageSlots,splitPolRatios,validate,Lot,type PolRatios} from './spec';
+import {Scenario,Formation,Step,Kind,clone,freeze,demoScenario,defaultCofPerPiece,stageSlots,splitPolRatios,validate,Lot,type PolRatios} from './spec';
 import {evaluate,BattleResult} from './engine';
 import {WipSnapshot,splitPOL,validateSnapshot} from '../report';
 
@@ -44,7 +44,7 @@ export class BattleSession {
  retry(){if(this.state!=='result')throw Error('结算后才能重布阵');this.state='setup';this.score=undefined;}
  /** Same mapper/snapshot as V071. Import is transactional and never auto-substitutes a demo. */
  applyInitialWip(snapshot:WipSnapshot){this.editable();validateSnapshot(snapshot);const c=snapshot.counts,p=splitPOL(c.POL_TOTAL,snapshot.peelRatio),lots:Lot[]=[];
-  const add=(id:string,kind:Kind,stage:Step,count:number)=>{if(count)lots.push({id:snapshot.fingerprint+':'+id,kind,mode:'TV',stage,count,source:'opening',at:0,cof:2,black:stage==='BLACK'?true:undefined});};
+  const add=(id:string,kind:Kind,stage:Step,count:number)=>{if(count)lots.push({id:snapshot.fingerprint+':'+id,kind,mode:'TV',stage,count,source:'opening',at:0,cof:defaultCofPerPiece,black:stage==='BLACK'?true:undefined});};
   add('remove','BD','REMOVE',c.REMOVE);add('tape','BD','TAPE',c.TAPE);add('bd','BD','BD',c.BD);add('uv','BD','UV',c.UV);add('peel','POL','PEEL',p.peel);add('pol','POL','POL',p.pol);add('film','FILM','FILM',c.FILM);add('pi','UNKNOWN','PI',c.PI);add('vi','UNKNOWN','VI',c.VI);add('out','UNKNOWN','OUT',c.OUT);add('black','POL','BLACK',c.BLACK);
   const next=demoScenario();next.mode='TV';next.shift=this.data.shift??'DAY';next.date=snapshot.date.replace(/-/g,'');next.configurationVersion='rw-tv-v1';next.id=['TV',next.shift,next.date,next.configurationVersion,snapshot.fingerprint].join(':');next.name='TV '+(next.shift==='DAY'?'白班':'夜班')+' · '+snapshot.date+' 日报快照 · 待确认';next.synthetic=false;next.lots=lots;next.rawFA=c.FA;next.sourceNote='已确认初始WIP快照；没有导入日报IN。新增IN默认0，需在任务设置中确认独立投入口径；后段未分型不反推类型。产能/成功率仍为演练参数，非可审计生产承诺。';
   // Store the source snapshot, but deliberately block starting until the user confirms no extra IN / configures it.

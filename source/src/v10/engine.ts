@@ -77,7 +77,7 @@ export function evaluate(s:Scenario,f:Formation):BattleResult {
  const simulation=simulate(s,f),potential=Object.fromEntries(stages.map(stage=>[stage,0])) as Record<Step,number>;
  for(const lot of s.lots)for(const stage of route(lot))potential[stage]+=lot.count;
  const sufficient:Formation={};for(const stage of stages)if(stage!=='BUBBLE'&&stage!=='OUT')sufficient[stage]=Array.from({length:stageSlots(stage,s)},(_,i)=>i+1);
- const benchmarkScenario={...s,budget:40},benchmark=simulate(benchmarkScenario,sufficient),work=clone(f),redundant:string[]=[];
+ const benchmark=simulate(s,sufficient),work=clone(f),redundant:string[]=[];
  const validStages=stages.filter(stage=>s.targets[stage]!==undefined||(!s.confirmedTargetsOnly&&potential[stage]>0));let hit=0,importance=0;
  for(const stage of validStages){const target=s.targets[stage]||0,excess=Math.max(0,simulation.ledger[stage].closing-target),weight=s.importance?.[stage]||1;importance+=weight;hit+=weight*Math.max(0,1-excess/Math.max(1,potential[stage]-target));}
  for(const stage of stages){for(const slot of [...(work[stage]||[])].sort((a,b)=>b-a)){

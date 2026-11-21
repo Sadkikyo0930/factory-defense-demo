@@ -25,12 +25,12 @@ assert.ok(day.batches.some(x=>x.kind==='REVIEW'));
 assert.throws(()=>P.forecastPlan([row('AB239AAA1')],date,'MNT','DAY'),/未配置/);
 assert.throws(()=>P.forecastLots(day,'MNT',{},P.demoArrival),/未确认/);
 for(const bu of ['TV','MNT'])for(const shift of ['DAY','NIGHT']){
- const scenario={...P.shiftScenario(bu,shift,date),budget:40},formation={};
+ const scenario=P.shiftScenario(bu,shift,date),formation={};
  for(const stage of S.visibleTowers(scenario))if(stage!=='BUBBLE')formation[stage]=Array.from({length:S.stageSlots(stage,scenario)},(_,i)=>i+1);
  const a=E.evaluate(scenario,formation),b=E.evaluate(scenario,formation),sim=a.simulation;
  assert.deepEqual(a.scoreBreakdown,b.scoreBreakdown);assert.deepEqual(sim,b.simulation);
  assert.equal(sim.opening,12);assert.equal(sim.input,0);assert.ok(sim.forecastInput>0);assert.ok(sim.successfulOut>0);
- assert.ok(sim.batches.every((entry,i)=>entry.count<=8&&(i===0||sim.batches[i-1].end<=entry.start)));
+ assert.ok(sim.batches.every((entry,i)=>entry.count<=8&&(i===0||sim.batches[i-1].end<=entry.start+1e-8)));
  for(const lot of scenario.lots.filter(l=>l.source==='forecast'))assert.ok(lot.at>0);
  if(bu==='MNT'){
   for(const [stage,max] of Object.entries({REMOVE:2,BD:2,PEEL:1,POL:1,CUT:1,FILM:3,PI:3,OC_VI:4,LCM_VI:2})){

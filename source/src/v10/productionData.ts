@@ -1,6 +1,6 @@
 import {count,normalize} from '../report';
 import {classifyMntPanel,forecastPlan,forecastLots,validPlanDate,normalizePlan,demoArrival,ngKinds, type ModelRule,type PlanRecord,type Shift} from './plan';
-import {clone,defaultPolRatio,inspectionStages,route,splitPolRatios,validate, type Mode,type Step,type Lot,type Kind,type Scenario,type PolRatios} from './spec';
+import {clone,defaultCofPerPiece,defaultPolRatio,inspectionStages,route,splitPolRatios,validate, type Mode,type Step,type Lot,type Kind,type Scenario,type PolRatios} from './spec';
 type Values=Partial<Record<Step,number>>;
 export interface RwSnapshot {date:string; opening:Record<Mode,Values>; targets:Record<Mode,Values>; warnings:string[]; polSummary:ReadonlySet<Mode>}
 export interface RwPlan {schema:'rw-mdl-plan';version:1;records:PlanRecord[];rules:Record<string,ModelRule>;ratios?:Partial<Record<Mode,Partial<Record<Shift,PolRatios>>>>}
@@ -57,7 +57,6 @@ function excluded(name:string,group:unknown){
  return /^(FA|DISA)/.test(key)||key.includes('拆解')||g==='SHARED'||!g&&['脱泡','共享脱POL'].includes(key);
 }
 const legacyPairs:Record<number,string>={49:'TV:REMOVE',51:'MNT:REMOVE',53:'TV:BD',55:'MNT:BD',75:'SHARED:BLACK',81:'MNT:OC_VI',87:'MNT:OC_VI'};
-const legacyLcmPairs:Record<number,string>={83:'MNT:LCM_VI',89:'MNT:LCM_VI'};
 function mergeIdentity(raw:unknown,row:number|undefined,column:number|undefined){
  if(raw===undefined)return;
  const area=objectValue(raw);
@@ -76,10 +75,19 @@ function matchesLegacyLayout(rows:unknown[]){
   if(!stage)continue;
   const mode=stage==='BLACK'&&r.allocation==='blackGlue-20-80'?'SHARED':p?.mode??'SHARED';
   const labels=signatures.get(row)??new Set<string>();
-  labels.add(mode+':'+stage);signatures.set(row,labels);
+  labels.add(mode+':'+stage+(p?.scope?':'+p.scope:''));signatures.set(row,labels);
  }
  const matches=([r,label]:[string,string])=>[Number(r),Number(r)+1].every(i=>signatures.get(i)?.size===1&&signatures.get(i)?.has(label));
- return Object.entries(legacyPairs).every(matches)?{...legacyPairs,...Object.fromEntries(Object.entries(legacyLcmPairs).filter(matches))}:{};
+ if(!Object.entries(legacyPairs).every(matches))return {};
+ // V3.8 expands every metric across its two display rows. Once the known
+ // template anchors match, identify its remaining pairs from the row lattice.
+ const pairs:Record<number,string>={};
+ for(const [row,labels] of signatures){
+  if(row<49||(row-49)%2!==0||labels.size!==1)continue;
+  const [label]=labels,next=signatures.get(row+1);
+  if(next?.size===1&&next.has(label))pairs[row]=label;
+ }
+ return pairs;
 }
 function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownPairs:Record<number,string>,polSummary?:Set<Mode>){
  const result:Record<Mode,Values>={TV:{},MNT:{}};
@@ -103,7 +111,7 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownPa
   const row=r.row==null?undefined:count(r.row),column=r.column==null?undefined:count(r.column);
   if(row===null||row===0||column===null||column===0)throw Error('日报来源坐标无效：'+label+' '+r.name);
   const area=mergeIdentity(r.mergeArea,row,column);
-  const legacyLabel=(p.stage==='BLACK'&&r.allocation==='blackGlue-20-80'?'SHARED':p.mode??'SHARED')+':'+p.stage;
+  const legacyLabel=(p.stage==='BLACK'&&r.allocation==='blackGlue-20-80'?'SHARED':p.mode??'SHARED')+':'+p.stage+(p.scope?':'+p.scope:'');
   const legacyStart=row===undefined?undefined:knownPairs[row]===legacyLabel?row:knownPairs[row-1]===legacyLabel?row-1:undefined;
   const location=label+' '+r.name+(row===undefined?'':'（Excel 第 '+row+' 行'+(column===undefined?'':'，第 '+column+' 列')+'）')+(area?' 合并区 '+area:'');
   const allocated=p.stage==='BLACK'&&!!p.mode&&r.allocation==='blackGlue-20-80'&&['黑胶','黑胶维修'].includes(normalize(r.sourceName));
@@ -132,6 +140,7 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownPa
  const keys=new Set([...found.values()].map(r=>r.key));
  const has=(mode:Mode,stage:string)=>['','OC','LCM'].some(scope=>keys.has(mode+':'+stage+':'+scope));
  let sharedBlack:number|undefined;
+ const polTotals:Partial<Record<Mode,number>>={};
  for(const {key,mode,stage,n} of found.values()){
   if(!mode){
    if(has('TV','BLACK')||has('MNT','BLACK'))throw Error('共享黑胶与分区黑胶同时存在，不能重复计算');
@@ -139,13 +148,18 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownPa
    if(!Number.isSafeInteger(sharedBlack))throw Error('共享黑胶合计超出安全整数');
    continue;
   }
-  const dest=stage==='TOTAL'?'PEEL':stage;
-  if(stage==='TOTAL'&&(has(mode,'PEEL')||has(mode,'POL')))throw Error(mode+' POL 汇总与明细重复');
-  if(stage==='TOTAL')polSummary?.add(mode);
   if((key.endsWith(':OC')||key.endsWith(':LCM'))&&keys.has(mode+':'+stage+':'))throw Error(mode+' '+stage+' 工序汇总和 OC/LCM 明细并存，不能重复计算');
-  const total=(result[mode][dest]??0)+n;
-  if(!Number.isSafeInteger(total))throw Error(mode+' '+dest+' 合计超出安全整数');
-  result[mode][dest]=total;
+  const total=(stage==='TOTAL'?polTotals[mode]??0:result[mode][stage]??0)+n;
+  if(!Number.isSafeInteger(total))throw Error(mode+' '+stage+' 合计超出安全整数');
+  if(stage==='TOTAL')polTotals[mode]=total;else result[mode][stage]=total;
+ }
+ for(const mode of ['TV','MNT'] as const){
+  const total=polTotals[mode],values=result[mode],peel=values.PEEL,attach=values.POL;
+  if(total===undefined||peel!==undefined&&attach!==undefined)continue;
+  if((peel??attach??0)>total)throw Error(mode+' POL 明细超出汇总');
+  if(peel===undefined&&attach===undefined){values.PEEL=Math.round(total*.2);values.POL=total-values.PEEL;polSummary?.add(mode);}
+  else if(peel===undefined)values.PEEL=total-attach!;
+  else values.POL=total-peel;
  }
  if(sharedBlack!==undefined){result.TV.BLACK=Math.round(sharedBlack*.2);result.MNT.BLACK=sharedBlack-result.TV.BLACK;}
  return result;
@@ -262,7 +276,7 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
    const stage=key as Step;
    if(!n)continue;
    const kind:Kind=['PEEL','POL','BUBBLE','CUT','BLACK'].includes(stage)?'POL':stage==='FILM'?'FILM':['PI','VI','OC_VI','LCM_VI','OUT'].includes(stage)?'UNKNOWN':'BD';
-   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:s.cofPerPiece??2,mntPanel:mode==='MNT'?(stage==='LCM_VI'?'LCM':'OC'):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined,tapeBeforeBD:stage==='BD'};
+   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:s.cofPerPiece??defaultCofPerPiece,mntPanel:mode==='MNT'?(stage==='LCM_VI'?'LCM':'OC'):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined,tapeBeforeBD:stage==='BD'};
    opening.push(lot);
   }
   s.lots.push(...splitPolRatios(opening,mode,s.polRatios));
@@ -272,7 +286,7 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
   if(forecast.unrouted.length){
    const details=forecast.unrouted.slice(0,4).map(b=>b.model+'（'+b.count+' 片）').join('、');
    s.productionBlock='MNT '+(shift==='DAY'?'白班':'夜班')+' NDF 型号无法判定 OC / LCM：'+details+'；BAB 前缀、第 10 位、第 8 位均未命中';
-  }else s.lots.push(...forecast.lots.map(lot=>({...lot,cof:s.cofPerPiece??2})));
+  }else s.lots.push(...forecast.lots.map(lot=>({...lot,cof:s.cofPerPiece??defaultCofPerPiece})));
   s.forecast={plan:forecast.result.plan,version:forecast.result.version,amounts:Object.fromEntries(ngKinds.map(k=>[k,forecast.result.diagnostic[k].count])) as NonNullable<Scenario['forecast']>['amounts']};
  }
  if(snapshot||plan){s.synthetic=false;s.id='production:'+mode+':'+shift+':'+date;s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date;s.sourceNote=(s.productionBlock?s.productionBlock+'。':'')+'期初为日报时点快照；预计 NG 是独立预测任务，到料时间为演练假设。';}
