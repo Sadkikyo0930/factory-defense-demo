@@ -1,0 +1,53 @@
+name: Publish compiled factory game to Pages root
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'source/src/**'
+      - 'source/index.html'
+      - 'source/public/**'
+      - 'source/vite.config.ts'
+      - '.github/workflows/publish-built-site.yml'
+permissions:
+  contents: write
+concurrency:
+  group: factory-site-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Compile game and browser assets
+        working-directory: source
+        run: |
+          npm ci
+          npm run build
+      - name: Publish exact compiled files with source version marker
+        run: |
+          cp -a source/dist/. ./
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const source=fs.readFileSync('source/src/v10/spec.ts','utf8');
+          const version=source.match(/export const webVersion='([^']+)'/)?.[1];
+          if(!version)throw Error('Source version missing');
+          const entry=fs.readFileSync('index.html','utf8');
+          if(!entry.includes('assets/index-'))throw Error('Compiled entry missing');
+          fs.writeFileSync('release.json',JSON.stringify({version,sourceCommit:process.env.GITHUB_SHA,buildTarget:'chrome109'})+'\n');
+          NODE
+          git add -- index.html assets release.json
+          if git diff --cached --quiet; then
+            echo "Compiled website already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish compiled ${GITHUB_SHA:0:8} to GitHub Pages root"
+          git push origin HEAD:main
