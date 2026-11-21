@@ -28,9 +28,10 @@ export function readProductionImport(raw:unknown):ProductionImport{
 }
 const aliases:Record<string,Step|'TOTAL'>={祛除:'REMOVE',去除:'REMOVE',贴胶:'TAPE',BD:'BD',UV:'UV',撕POL:'PEEL',机器撕POL:'PEEL',贴POL:'POL',POL:'TOTAL',脱泡:'BUBBLE',共享脱POL:'BUBBLE',切割:'CUT',黑胶:'BLACK',覆膜:'FILM',贴膜:'FILM',修膜:'FILM',PI:'PI',VI:'VI',OCVI:'OC_VI',LCMVI:'LCM_VI',OUT:'OUT',
  'VI/OUT':'VI','OCVI/OUT':'OC_VI','LCMVI/OUT':'LCM_VI',OC:'OC_VI',LCM:'LCM_VI',模组:'LCM_VI',OCOUT:'OC_VI',LCMOUT:'LCM_VI',OC检验:'OC_VI',LCM检验:'LCM_VI',条件切割:'CUT',机器切割:'CUT',CUT:'CUT',黑胶维修:'BLACK',脱POL:'BUBBLE'};
+function isNonGameJob(key:string){return /^(FA|DISA)/.test(key)||key==='INK'||key.includes('拆解');}
 function position(name:string,group:unknown,record?:Record<string,unknown>,location='日报'){
  const n=normalize(name),pref=/^(TV|MNT)/.exec(n)?.[1] as Mode|undefined,key=(pref?n.slice(pref.length):n).replace(/^[:：]/,'');
- if(/^(FA|DISA)/.test(key)||key.includes('拆解'))return;
+ if(isNonGameJob(key))return;
  const g=normalize(group);
  const fail=(reason:string)=>{throw Error('日报工区冲突：'+reason+'；'+location+' '+JSON.stringify({name,group:group??null,sourceName:record?.sourceName,row:record?.row,column:record?.column}));};
  if(g&&!['TV','MNT','SHARED'].includes(g))fail('未知 group');
@@ -54,7 +55,7 @@ function position(name:string,group:unknown,record?:Record<string,unknown>,locat
 function excluded(name:string,group:unknown){
  const key=normalize(name).replace(/^(TV|MNT):?/,'');
  const g=normalize(group);
- return /^(FA|DISA)/.test(key)||key.includes('拆解')||g==='SHARED'||!g&&['脱泡','共享脱POL'].includes(key);
+ return isNonGameJob(key)||g==='SHARED'||!g&&['脱泡','共享脱POL'].includes(key);
 }
 const legacyPairs:Record<number,string>={49:'TV:REMOVE',51:'MNT:REMOVE',53:'TV:BD',55:'MNT:BD',75:'SHARED:BLACK',81:'MNT:OC_VI',87:'MNT:OC_VI'};
 function mergeIdentity(raw:unknown,row:number|undefined,column:number|undefined){

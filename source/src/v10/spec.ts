@@ -1,4 +1,4 @@
-export const webVersion='V1.0-rw38.5';
+export const webVersion='V1.0-rw38.6';
 export const defaultCofPerPiece=3;
 export const stages=['REMOVE','TAPE','BD','UV','PEEL','POL','BUBBLE','CUT','BLACK','FILM','PI','VI','OC_VI','LCM_VI','OUT'] as const;
 export type Step=typeof stages[number];
