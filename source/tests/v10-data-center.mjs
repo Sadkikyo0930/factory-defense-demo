@@ -112,7 +112,7 @@ try{
  assert.equal((await state()).forecast,undefined);
  assert.equal((await cells('TV','REMOVE'))[2],'未导入');
  // V3.7 emits already-allocated black glue rows; the game must not split them again.
- const allocated=['TV','MNT'].map((group,i)=>({name:group+'黑胶',group,today:i?33:8,allocation:'blackGlue-20-80',sourceName:'黑胶'}));
+ const allocated=['TV','MNT'].map((group,i)=>({name:group+'黑胶',group,today:i?33:8,allocation:'blackGlue-20-80',sourceName:'黑胶',row:99,column:12}));
  await file('production-json',{...combined,rows:[...combined.rows.filter(r=>r.name!=='黑胶'),...allocated],productionPlan:{...plan,rules}});
  assert.equal((await cells('TV','BLACK'))[1],'8');assert.equal((await cells('MNT','BLACK'))[1],'33');
  await page.locator('#data-confirm').click();
@@ -155,5 +155,70 @@ try{
  await page.waitForFunction(()=>window.v10Scene?.ready);
  await page.locator('#import-report').click();
  assert.equal((await cells('TV','BD'))[3],'未导入');
+ assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.2');
+ const jobs=[
+  ['REMOVE','祛除'],['TAPE','贴胶'],['BD','BD'],['UV','UV'],['PEEL','撕 POL'],['POL','贴 POL'],
+  ['BLACK','黑胶'],['FILM','贴膜'],['PI','PI'],['OUT','OUT']
+ ];
+ const full=Object.fromEntries([
+  ['TV',[...jobs,['VI','VI']]],
+  ['MNT',[...jobs,['CUT','切割'],['OC_VI','OC VI / OUT'],['LCM_VI','LCM VI / OUT']]]
+ ]);
+ const records=Object.entries(full).flatMap(([group,jobs],bu)=>jobs.map(([stage,name],i)=>({
+  stage,name:stage==='OC_VI'?'MNT OC':name,group,row:20+bu*30+i,column:12,today:bu*20+i+1,target:bu*20+i+2
+ })));
+ const oc=records.find(r=>r.stage==='OC_VI');
+ const extraOc={...oc,row:90,today:7,target:3};
+ const uv=records.find(r=>r.group==='MNT'&&r.stage==='UV');
+ uv.shift='白班';
+ const tape=records.find(r=>r.group==='MNT'&&r.stage==='TAPE');
+ tape.name='OC 贴胶';
+ const extraTape={...tape,row:92,name:'贴胶（LCM）',today:5,target:4};
+ records.push({...oc,name:'MNT OC VI'},extraOc,{...extraOc},{...uv,row:91,shift:'夜班'},extraTape);
+ const makeFull=(rows)=>({date,rows,targetBaseline:{version:1,rows:rows.map(r=>({...r,column:11}))},productionPlan:{...plan,rules}});
+ const previous=await state(),loaded=makeFull(records);
+ const picker=page.waitForEvent('filechooser');
+ await page.locator('#pick-production').click();
+ await (await picker).setFiles({name:'synthetic-rw38-full.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(loaded))});
+ await page.locator('#data-pending').waitFor();
+ assert.deepEqual(await state(),previous);
+ for(const [group,stages] of Object.entries(full))for(const [stage] of stages){
+  const r=records.find(r=>r.group===group&&r.stage===stage);
+  const addition=stage==='OC_VI'?extraOc:r===tape?extraTape:undefined;
+  const row=await cells(group,stage);
+  assert.equal(row[1],String(r.today+(addition?.today??0)),group+' '+stage+' opening');
+  assert.equal(row[3],String(r.target+(addition?.target??0)),group+' '+stage+' target');
+ }
+ await page.locator('#data-confirm').click();
+ const first=await state();
+ assert.equal(first.forecast.plan,1000);
+ assert.equal(first.lots.find(l=>l.stage==='OUT'&&l.source==='opening').count,10);
+ const second=makeFull(records.map(r=>({...r,today:r.today+1,target:r.target+2})));
+ await file('production-json',second);
+ await page.locator('#data-confirm').click();
+ const saved=await state();
+ assert.equal(saved.targets.OUT,first.targets.OUT+2);
+ assert.equal(saved.lots.find(l=>l.stage==='OUT'&&l.source==='opening').count,11);
+ assert.deepEqual(saved.forecast,first.forecast);
+ assert.equal((await cells('MNT','OC_VI'))[1],String(oc.today+extraOc.today+2));
+ for(const field of ['today','target']){
+  const bad=structuredClone(second);
+  const list=field==='today'?bad.rows:bad.targetBaseline.rows;
+  list.push({...list.find(r=>r.row===90),[field]:999});
+  await page.locator('#production-json').setInputFiles({name:'synthetic-conflict.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bad))});
+  await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('Excel 第 90 行'));
+  const diagnostic=await page.locator('#data-error').innerText();
+  assert.match(diagnostic,/日报岗位数值冲突：/);
+  assert.match(diagnostic,field==='today'?/第 12 列/:/第 11 列/);
+  assert.match(diagnostic,/999/);
+  assert.deepEqual(await state(),saved);
+ }
+ await page.screenshot({path:'artifacts/v10-rw38-2-source-rows.png'});
+ const badShift=makeFull(records.map(r=>r.row===91?{...r,today:r.today+1}:r));
+ await page.locator('#production-json').setInputFiles({name:'synthetic-shift-conflict.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(badShift))});
+ await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('Excel 第 91 行'));
+ assert.match(await page.locator('#data-error').innerText(),/日报岗位数值冲突.*Excel 第 53 行.*Excel 第 91 行/);
+ assert.deepEqual(await state(),saved);
+ console.log('PASS rw38.2 all TV/MNT stages, different Excel rows, repeat rows, explicit shifts, both metric conflicts, two complete imports and browser version');
  assert.deepEqual(errors,[]);console.log('PASS V3.8-shaped import, atomic rollback, fresh targets, scoped jobs, NDF routing, independent COF, derived bubble WIP and physical conservation');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

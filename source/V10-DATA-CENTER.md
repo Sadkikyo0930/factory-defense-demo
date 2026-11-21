@@ -4,7 +4,9 @@
 
 V3.8 的根节点为 `date / rows / targetBaseline / source / productionPlan`。目标来自 `targetBaseline.rows[].target`，期初来自 `rows[].today`。计划的 `dayQty / nightQty` 和 `expectedDay / expectedNight` 分别对应白班和夜班。换班时使用同一份期初和目标快照。工序存在数值但无法映射时，预览列出原始名称和位置，确认操作会保留上一份任务。没有直接预测投料的工序显示「无直接新增 NG」。
 
-TV、MNT 分开归集。普通维修工序合并 OC / LCM 的分项，重复的同工序快照只取一次。VI 单独保留 OC 和 LCM。预计 NDF 的型号须在预览标明 OC 或 LCM，也可通过 `productionPlan.rules[型号].panel` 提供。V3.8 脚本本身未导出这个属性。其他需要 VI 的 MNT 预计产品进入 OC VI。FA、Disa 和未分区共享数据排除在维修任务外。共享黑胶分配为 TV 20%（四舍五入）、MNT 取余量，已分配的黑胶保持原值。
+TV、MNT 分开归集。普通维修工序合并 OC / LCM 的分项，VI 单独保留 OC 和 LCM。预计 NDF 的型号须在预览标明 OC 或 LCM，也可通过 `productionPlan.rules[型号].panel` 提供。V3.8 脚本本身未导出这个属性。其他需要 VI 的 MNT 预计产品进入 OC VI。FA、Disa 和未分区共享数据排除在维修任务外。共享黑胶分配为 TV 20%（四舍五入）、MNT 取余量，已分配的黑胶保持原值。
+
+数据中心页头显示 `V1.0-rw38.2`。期初和目标分别按来源行聚合。不同原始行的独立工序记录相加；相同来源行的相同岗位和值只计一次。相同来源行出现矛盾时，提示两条 JSON 记录及 Excel 行列。分配好的共享黑胶可以在同一行各有一条 TV 和 MNT 记录。若 JSON 明确标记白夜班快照，同岗位的相同值只取一次，矛盾值要求核对。旧 JSON 缺少来源行时按工序快照核对；无法从没有班次标记的记录推断白夜班关系。
 
 贴胶工作量按祛除和 BD 的期初及预计新增之和乘以所选班次 COF/片。脱 POL 工作量按撕 POL 和贴 POL 的期初及预计新增求和。脱 POL 的展示期初含撕 POL 期初和本 BU 的原始脱 POL 期初，目标为 0。引擎只在原始工序建立物理批次。只有 POL 汇总数时，整批从撕 POL 进入，之后继续贴 POL，免去手动拆分。同份日报同时有汇总和工序明细时要求核对，避免重复。
 
