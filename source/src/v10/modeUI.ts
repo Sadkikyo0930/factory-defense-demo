@@ -3,7 +3,7 @@ import {shiftScenario,type Shift} from './plan';
 import type {Mode} from './spec';
 import {challengeId, makeScore, playerName, scoreRepository, type ScoreRecord} from './scores';
 
-export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknown)=>void,data?:{hasData():boolean;load(mode:Mode,shift:Shift,date:string):void}){
+export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknown)=>void,data?:{load(mode:Mode,shift:Shift,date:string):void}){
  const bar=document.createElement('section');bar.className='mode-controls';
  bar.innerHTML='<label>BU <select id="bu-mode"><option>TV</option><option>MNT</option></select></label><label>班次 <select id="work-shift"><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label><label>演练日期 <input id="scenario-date" type="date"></label><button id="score-history">历史成绩</button><span id="ng-summary"></span>';
  document.querySelector('header')!.after(bar);
@@ -13,7 +13,7 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
   try{
    if(session.phase!=='setup')throw Error('请先返回布阵');
    const mode=$<HTMLSelectElement>('bu-mode').value as Mode,shift=$<HTMLSelectElement>('work-shift').value as Shift,key=date.value.replace(/-/g,'');
-   if(data?.hasData())data.load(mode,shift,key);else session.setScenario(shiftScenario(mode,shift,key));
+   if(data)data.load(mode,shift,key);else session.setScenario(shiftScenario(mode,shift,key));
    refresh();
   }catch(e){say(e);}
  };

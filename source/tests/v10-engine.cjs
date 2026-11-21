@@ -2,7 +2,14 @@ const fs=require('fs'),path=require('path'),assert=require('assert'),ts=require(
 const cache={};function load(name){if(cache[name])return cache[name];const file=path.join(__dirname,'../src',name+'.ts'),module={exports:{}};cache[name]=module.exports;const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2018,module:ts.ModuleKind.CommonJS}}).outputText;new Function('exports','require','module',code)(module.exports,id=>id.startsWith('.')?load(path.posix.normalize(path.posix.join(path.posix.dirname(name),id))):require(id),module);return module.exports;}
 const S=load('v10/spec'),E=load('v10/engine'),{BattleSession}=load('v10/session');
 let passed=0;function test(name,fn){fn();passed++;console.log('PASS V10 '+name);}
-function base(lots=[]){return {...S.demoScenario(),lots,budget:40,yield:{BD:1,POL:1,FILM:1,REVIEW:1,UNKNOWN:1}};}
+function base(lots=[]){return {...S.demoScenario(),lots,yield:{BD:1,POL:1,FILM:1,REVIEW:1,UNKNOWN:1}};}
+test('all MNT posts are deployable with an obsolete budget field, and staff scoring remains active',()=>{
+ const s={...base(),mode:'MNT',cutMNTConfirmed:true,budget:0};
+ const formation=Object.fromEntries(S.visibleTowers(s).filter(stage=>stage!=='BUBBLE').map(stage=>[stage,Array.from({length:S.stageSlots(stage,s)},(_,i)=>i+1)]));
+ const r=E.evaluate(s,formation);
+ assert.equal(r.deployed,22);assert.equal(r.redundant.length,22);assert.equal(r.scoreBreakdown.staff,0);
+ assert.throws(()=>S.validate(s,{...formation,LCM_VI:[1,2,3]}),/部署位不合法/);
+});
 function lot(id,stage,count,kind='BD',extra={}){return {id,stage,count,kind,mode:'TV',source:'opening',at:0,cof:2,...extra};}
 function full(){return Object.fromEntries(S.stages.filter(s=>!['OUT','BUBBLE'].includes(s)).map(s=>[s,Array.from({length:S.slots[s]},(_,i)=>i+1)]));}
 test('all four routes and independent middle-stage WIP conserve identities',()=>{const s=base([lot('a','REMOVE',4),lot('b','PEEL',4,'POL',{black:true}),lot('c','FILM',4,'FILM'),lot('d','VI',4,'REVIEW'),lot('e','BD',4),lot('f','PI',4,'UNKNOWN'),lot('g','VI',4,'UNKNOWN')]);const r=E.simulate(s,full());assert.equal(r.successfulOut,28);assert.equal(r.ledger.REMOVE.processed,4);assert.equal(r.ledger.TAPE.processed,4);assert.equal(r.ledger.BD.processed,8);assert.equal(r.ledger.PEEL.processed,4);assert.equal(r.ledger.BLACK.processed,4);assert(r.identityConservation);});

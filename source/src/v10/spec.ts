@@ -1,4 +1,5 @@
-export const webVersion='V1.0-rw38.4';
+export const webVersion='V1.0-rw38.5';
+export const defaultCofPerPiece=3;
 export const stages=['REMOVE','TAPE','BD','UV','PEEL','POL','BUBBLE','CUT','BLACK','FILM','PI','VI','OC_VI','LCM_VI','OUT'] as const;
 export type Step=typeof stages[number];
 export type Kind='BD'|'POL'|'FILM'|'REVIEW'|'UNKNOWN';
@@ -13,7 +14,7 @@ export const slots:Record<Step,number>={REMOVE:3,TAPE:1,BD:2,UV:1,PEEL:1,POL:2,B
 export interface Lot {id:string;kind:Kind;mode:Mode;stage:Step;count:number;source:'opening'|'external'|'forecast';at:number;cof:number;black?:boolean;cut?:boolean;extraBlack?:boolean;extraCut?:boolean;tapeFactor?:2;tapeBeforeBD?:boolean;mntPanel?:'OC'|'LCM';}
 export interface PolRatios {blackRatio?:number;cutRatio?:number}
 export const defaultPolRatio=.3;
-export interface Scenario {schemaVersion:1;mode?:Mode;shift?:'DAY'|'NIGHT';date?:string;configurationVersion?:string;productionBlock?:string;cofPerPiece?:number;polRatios?:PolRatios;forecast?:{plan:number;version:string;amounts:Record<'BD'|'POL'|'REVIEW'|'FILM',number>};id:string;name:string;synthetic:boolean;seed:string;duration:number;budget:number;lots:Lot[];targets:Partial<Record<Step,number>>;confirmedTargetsOnly?:boolean;importance?:Partial<Record<Step,number>>;yield:Record<Kind,number>;weights:{target:number;staff:number;out:number};sourceNote:string;rawFA:number;inConfirmed:boolean;conditionalPOLConfirmed?:boolean;cutTVConfirmed:boolean;cutMNTConfirmed:boolean;disabled:string[];minimum:Partial<Record<Step,number>>;}
+export interface Scenario {schemaVersion:1;mode?:Mode;shift?:'DAY'|'NIGHT';date?:string;configurationVersion?:string;productionBlock?:string;cofPerPiece?:number;polRatios?:PolRatios;forecast?:{plan:number;version:string;amounts:Record<'BD'|'POL'|'REVIEW'|'FILM',number>};id:string;name:string;synthetic:boolean;seed:string;duration:number;lots:Lot[];targets:Partial<Record<Step,number>>;confirmedTargetsOnly?:boolean;importance?:Partial<Record<Step,number>>;yield:Record<Kind,number>;weights:{target:number;staff:number;out:number};sourceNote:string;rawFA:number;inConfirmed:boolean;conditionalPOLConfirmed?:boolean;cutTVConfirmed:boolean;cutMNTConfirmed:boolean;disabled:string[];minimum:Partial<Record<Step,number>>;}
 export type Formation=Partial<Record<Step,number[]>>;
 export type InspectionStage='VI'|'OC_VI'|'LCM_VI';
 export const inspectionStages:readonly InspectionStage[]=['VI','OC_VI','LCM_VI'];
@@ -87,7 +88,6 @@ export function validate(s:Scenario,f:Formation,requireConfirmedInput=true){
  if(!Number.isSafeInteger(s.rawFA)||s.rawFA<0)throw Error('FA共享原始值不合法');
  if(typeof s.seed!=='string'||!s.seed.length||s.seed.length>256)throw Error('情景种子不合法');
  if(!Number.isFinite(s.duration)||s.duration<=0||s.duration>36000)throw Error('班次必须在 10 小时内');
- if(!Number.isSafeInteger(s.budget)||s.budget<0||s.budget>40)throw Error('人员预算须为 0～40');
  if(s.lots.length>500)throw Error('来源批次数超过500，请先汇总');
  const ids=new Set<string>();let total=0;
  for(const l of s.lots){if(!l.id||ids.has(l.id))throw Error('物料来源ID重复');ids.add(l.id);if(!Number.isSafeInteger(l.count)||l.count<0||!Number.isFinite(l.at)||l.at<0||l.at>s.duration||!Number.isFinite(l.cof)||l.cof<=0||l.cof>20)throw Error('物料数量/到料时间/COF不合法');if(s.mode==='MNT'&&(!l.mntPanel||l.mode!=='MNT'))throw Error('MNT 批次须明确指定 OC / LCM');if(l.source==='opening'&&l.at!==0)throw Error('期初批次必须在零时刻');if(!['TV','MNT'].includes(l.mode)||!['BD','POL','FILM','REVIEW','UNKNOWN'].includes(l.kind)||!stages.includes(l.stage))throw Error('物料类型不合法');const r=route(l);if(r.includes('CUT')&&l.count){if(l.mode==='TV')throw Error('TV切割设备及产能未确认，不能模拟自动通过');if(!s.cutMNTConfirmed)throw Error('MNT切割规则尚未确认');}total+=l.count;if(!Number.isSafeInteger(total))throw Error('物料合计超出安全整数');}
@@ -97,12 +97,10 @@ export function validate(s:Scenario,f:Formation,requireConfirmedInput=true){
  for(const n of Object.values(s.importance||{}))if(!Number.isFinite(n)||n!<=0)throw Error('岗位重要性须为正数');
  for(const key of ['target','staff','out'] as const){const n=s.weights[key];if(!Number.isFinite(n)||n<0)throw Error('权重不合法');}if(Math.abs(Object.values(s.weights).reduce((a,b)=>a+b,0)-100)>1e-7)throw Error('评分权重合计须为100');
  for(const key of Object.keys(f)){if(!stages.includes(key as Step))throw Error('未知工位');}
- let staff=0;
- for(const stage of stages){const assigned=f[stage]||[];if((stage==='BUBBLE'||stage==='OUT')&&assigned.length)throw Error('脱泡为唯一自动机器，OUT由VI兼顾，不新增员工');if(new Set(assigned).size!==assigned.length||assigned.some(n=>!Number.isInteger(n)||n<1||n>stageSlots(stage,s)))throw Error(label[stage]+'部署位不合法');staff+=assigned.length;}
- if(staff>s.budget)throw Error('超过本情景人员预算');
+ for(const stage of stages){const assigned=f[stage]||[];if((stage==='BUBBLE'||stage==='OUT')&&assigned.length)throw Error('脱泡为唯一自动机器，OUT由VI兼顾，不新增员工');if(new Set(assigned).size!==assigned.length||assigned.some(n=>!Number.isInteger(n)||n<1||n>stageSlots(stage,s)))throw Error(label[stage]+'部署位不合法');}
  return total;
 }
 export function demoScenario():Scenario {
- const lot=(id:string,kind:Kind,stage:Step,count:number,source:'opening'|'external'|'forecast'='opening',at=0,mode:Mode='TV'):Lot=>({id,kind,stage,count,source,at,mode,cof:2,black:kind==='POL'});
- return {schemaVersion:1,id:'synthetic-tv-10h-v1',name:'TV 元素防线 · SYNTHETIC 演练',synthetic:true,seed:'factory-v10-fixed',duration:36000,budget:20,lots:[lot('o-remove','BD','REMOVE',10),lot('o-bd','BD','BD',20),lot('o-pol','POL','POL',15),lot('o-film','FILM','FILM',12),lot('o-pi','UNKNOWN','PI',8),lot('o-vi','UNKNOWN','VI',9),lot('o-out','UNKNOWN','OUT',4),lot('in-bd','BD','REMOVE',30,'external',1800),lot('in-pol','POL','PEEL',18,'external',3600),lot('in-film','FILM','FILM',12,'external',7200),lot('in-review','REVIEW','VI',16,'external',10800)],targets:{REMOVE:0,TAPE:0,BD:0,UV:0,PEEL:0,POL:0,BUBBLE:0,BLACK:0,FILM:0,PI:0,VI:0,OUT:0},yield:{BD:.68,POL:.8,FILM:1,REVIEW:1,UNKNOWN:1},weights:{target:60,staff:25,out:15},sourceNote:'合成到料序列；覆膜/过判100%仅演练；后段未分型不反推维修成功率。混批测试允许MNT进入唯一脱泡机；未确认的MNT后段设备不借用TV工位，保留在MNT后段等待。',rawFA:61,inConfirmed:true,cutTVConfirmed:false,cutMNTConfirmed:false,disabled:[],minimum:{}};
+ const lot=(id:string,kind:Kind,stage:Step,count:number,source:'opening'|'external'|'forecast'='opening',at=0,mode:Mode='TV'):Lot=>({id,kind,stage,count,source,at,mode,cof:defaultCofPerPiece,black:kind==='POL'});
+ return {schemaVersion:1,id:'synthetic-tv-10h-v1',name:'TV 元素防线 · SYNTHETIC 演练',synthetic:true,seed:'factory-v10-fixed',duration:36000,cofPerPiece:defaultCofPerPiece,lots:[lot('o-remove','BD','REMOVE',10),lot('o-bd','BD','BD',20),lot('o-pol','POL','POL',15),lot('o-film','FILM','FILM',12),lot('o-pi','UNKNOWN','PI',8),lot('o-vi','UNKNOWN','VI',9),lot('o-out','UNKNOWN','OUT',4),lot('in-bd','BD','REMOVE',30,'external',1800),lot('in-pol','POL','PEEL',18,'external',3600),lot('in-film','FILM','FILM',12,'external',7200),lot('in-review','REVIEW','VI',16,'external',10800)],targets:{REMOVE:0,TAPE:0,BD:0,UV:0,PEEL:0,POL:0,BUBBLE:0,BLACK:0,FILM:0,PI:0,VI:0,OUT:0},yield:{BD:.68,POL:.8,FILM:1,REVIEW:1,UNKNOWN:1},weights:{target:60,staff:25,out:15},sourceNote:'合成到料序列；覆膜/过判100%仅演练；后段未分型不反推维修成功率。混批测试允许MNT进入唯一脱泡机；未确认的MNT后段设备不借用TV工位，保留在MNT后段等待。',rawFA:61,inConfirmed:true,cutTVConfirmed:false,cutMNTConfirmed:false,disabled:[],minimum:{}};
 }

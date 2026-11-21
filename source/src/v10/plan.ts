@@ -1,4 +1,4 @@
-import {demoScenario, type Kind,type Lot,type Mode,type Scenario,type Step} from './spec';
+import {demoScenario,defaultCofPerPiece, type Kind,type Lot,type Mode,type Scenario,type Step} from './spec';
 export type Shift='DAY'|'NIGHT';
 type NgKind=Exclude<Kind,'UNKNOWN'>;
 export const ngKinds=['POL','BD','REVIEW','FILM'] as const;
@@ -66,7 +66,7 @@ export function forecastLots(input:ReturnType<typeof forecastPlan>,mode:Mode,rul
   if(!rule||(mode==='MNT'&&!rule.panel&&(!productionRouting||b.kind==='REVIEW')))throw Error('型号维修路径未确认：'+b.model);
   const panel=productionRouting&&mode==='MNT'&&b.kind!=='REVIEW'?'OC':rule.panel;
   const stage:Step=b.kind==='BD'?'REMOVE':b.kind==='POL'?'PEEL':b.kind==='FILM'?'FILM':mode==='TV'?'VI':panel==='OC'?'OC_VI':'LCM_VI';
-  return {id:'forecast:'+b.kind+':'+i,mode,kind:b.kind,count:b.count,source:'forecast',stage,at:arrival(b,i),cof:2,mntPanel:panel,cut:b.kind==='POL'&&rule.cut===true,black:b.kind==='POL'&&rule.polBlack===true};
+  return {id:'forecast:'+b.kind+':'+i,mode,kind:b.kind,count:b.count,source:'forecast',stage,at:arrival(b,i),cof:defaultCofPerPiece,mntPanel:panel,cut:b.kind==='POL'&&rule.cut===true,black:b.kind==='POL'&&rule.polBlack===true};
  });
 }
 const demoModels={TV:['AB315AAA1','AB430AAA2'],MNT:['AB238AAA1','BAB270AAA2']} as const;
@@ -78,7 +78,7 @@ export function shiftScenario(mode:Mode,shift:Shift,date:string):Scenario{
  s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date+' · SYNTHETIC';
  s.sourceNote='SYNTHETIC 演练；未导入真实计划或快照。预测分类型，可能重叠；到料时刻为演练假设。单 BU 场景共享脱泡只有一台，未计另一 BU 占用。MNT 未确认的工位、产能和型号条件采用演练参数。';
  s.cutMNTConfirmed=mode==='MNT';s.rawFA=0;
- s.lots=[{id:'demo-opening',mode,kind:'BD',stage:'BD',count:12,source:'opening',at:0,cof:2,mntPanel:mode==='MNT'?'OC':undefined},...forecastLots(forecast,mode,rules,demoArrival)];
+ s.lots=[{id:'demo-opening',mode,kind:'BD',stage:'BD',count:12,source:'opening',at:0,cof:defaultCofPerPiece,mntPanel:mode==='MNT'?'OC':undefined},...forecastLots(forecast,mode,rules,demoArrival)];
  s.targets=mode==='MNT'?{BD:5,PI:5,OC_VI:8,LCM_VI:8,OUT:5}:{BD:5,PI:5,VI:10,OUT:5};
  s.forecast={plan:forecast.plan,version:forecast.version,amounts:Object.fromEntries(ngKinds.map(k=>[k,forecast.diagnostic[k].count])) as NonNullable<Scenario['forecast']>['amounts']};
  return s;
