@@ -172,9 +172,9 @@ try{
  await page.waitForFunction(()=>window.v10Scene?.ready);
  await page.locator('#import-report').click();
  assert.equal((await cells('TV','BD'))[3],'未导入');
- assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.6');
- assert.match(await page.title(),/V1\.0-rw38\.6/);
- assert.equal(await page.locator('header .brand em').innerText(),'V1.0-rw38.6');
+ assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.7');
+ assert.match(await page.title(),/V1\.0-rw38\.7/);
+ assert.equal(await page.locator('header .brand em').innerText(),'V1.0-rw38.7');
  const jobs=[
   ['REMOVE','祛除'],['TAPE','贴胶'],['BD','BD'],['UV','UV'],['PEEL','撕 POL'],['POL','贴 POL'],
   ['BLACK','黑胶'],['FILM','贴膜'],['PI','PI'],['OUT','OUT']
