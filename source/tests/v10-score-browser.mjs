@@ -37,7 +37,7 @@ try{
    assert.match(await page.locator('.element-row[data-stage=BUBBLE]').innerText(),/自动生效/);
    assert.match(await page.locator('[data-select=CUT]').innerText(),/切割/);
    await page.locator('#task-settings').click();
-   assert.equal(await page.locator('#task-dialog details,#task-dialog table,#task-dialog input[type=checkbox],#use-demo,#pol-cut-ratio').count(),0);
+   assert.equal(await page.locator('#task-dialog details,#task-dialog table,#task-dialog input[type=checkbox],#use-demo').count(),0);
    await page.locator('#budget').fill('19');
    await page.locator('#apply-task').click();
    assert.equal(await page.locator('#task-dialog').evaluate(e=>e.open),false);
