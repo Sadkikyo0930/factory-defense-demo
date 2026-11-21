@@ -6,7 +6,7 @@ import {clone,stageLabel,visibleTowers,type Mode} from './spec';
 
 export function setupDataCenter(session:BattleSession,changed:()=>void){
  const dialog=document.createElement('dialog');dialog.id='production-data';
- dialog.innerHTML=`<div class="dialog-heading"><h2>生产任务数据中心</h2><button id="close-data">关闭</button></div>
+ dialog.innerHTML=`<div class="dialog-heading"><h2>生产任务数据中心 <small id="data-version">V1.0-rw38.2</small></h2><button id="close-data">关闭</button></div>
  <div class="data-controls"><button id="pick-production">导入今日生产任务</button>
  <label>日期 <input type="date" id="data-date"></label><label>班次 <select id="data-shift"><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label></div>
  <input type="file" id="production-json" accept=".json,application/json" hidden>

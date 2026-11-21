@@ -58,7 +58,10 @@ function excluded(name:string,group:unknown){
 }
 function collect(rows:unknown[],field:'today'|'target',warnings:string[]){
  const result:Record<Mode,Values>={TV:{},MNT:{}};
- const found=new Map<string,{mode?:Mode;stage:Step|'TOTAL';n:number}>();
+ type Reading={key:string;mode?:Mode;stage:Step|'TOTAL';n:number;location:string;allocated:boolean};
+ const sources=new Map<string,Reading>(),seenRows=new Map<number,Reading>(),found=new Map<string,Reading>();
+ const snapshotKeys=new Set<string>(),rowKeys=new Set<string>();
+ const conflict=(a:Reading,b:Reading)=>{throw Error('日报岗位数值冲突：'+a.location+' = '+a.n+'；'+b.location+' = '+b.n);};
  for(const [i,raw] of rows.entries()){
   if(!raw||typeof raw!=='object')throw Error('日报岗位记录无效');
   const r=raw as Record<string,unknown>;
@@ -71,19 +74,50 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[]){
    continue;
   }
   const n=count(value);if(n===null)throw Error('日报数值无效：'+r.name);
-  const key=(p.mode??'SHARED')+':'+p.stage+':'+(p.scope??''),old=found.get(key);if(old&&old.n!==n)throw Error('日报岗位数值冲突：'+r.name);
-  found.set(key,{...p,n});
+  const key=(p.mode??'SHARED')+':'+p.stage+':'+(p.scope??'');
+  const row=r.row==null?undefined:count(r.row),column=r.column==null?undefined:count(r.column);
+  if(row===null||row===0||column===null||column===0)throw Error('日报来源坐标无效：'+label+' '+r.name);
+  const location=label+' '+r.name+(row===undefined?'':'（Excel 第 '+row+' 行'+(column===undefined?'':'，第 '+column+' 列')+'）');
+  const allocated=p.stage==='BLACK'&&!!p.mode&&r.allocation==='blackGlue-20-80'&&['黑胶','黑胶维修'].includes(normalize(r.sourceName));
+  const reading={...p,key,n,location,allocated};
+  if(row!==undefined){
+   // V3.8 can emit the two portions of one shared black-glue row.
+   const physicalKey=row+(allocated?':'+p.mode:'');
+   const old=sources.get(physicalKey);
+   if(old&&(old.n!==n||old.key!==key))conflict(old,reading);
+   const other=seenRows.get(row);
+   if(other&&other.allocated!==allocated)conflict(other,reading);
+   if(old)continue;
+   sources.set(physicalKey,reading);seenRows.set(row,reading);
+  }
+  const shift=normalize(r.shift);
+  const shiftSnapshot=['DAY','NIGHT','白班','夜班'].includes(shift);
+  const snapshot=row===undefined||shiftSnapshot;
+  const bucket=snapshot?'snapshot:'+key:'row:'+row+':'+key;
+  if((snapshot?rowKeys:snapshotKeys).has(key))throw Error('日报来源不明确：'+location+'，同工序混用独立 Excel 行与无行号或班次快照');
+  (snapshot?snapshotKeys:rowKeys).add(key);
+  const old=found.get(bucket);
+  if(old&&old.n!==n)conflict(old,reading);
+  found.set(bucket,reading);
  }
- const has=(mode:Mode,stage:string)=>[...found.keys()].some(k=>k.startsWith(mode+':'+stage+':'));
- for(const [key,{mode,stage,n}] of found){
-  if(!mode){if(has('TV','BLACK')||has('MNT','BLACK'))throw Error('共享黑胶与分区黑胶同时存在，不能重复计算');const tv=Math.round(n*.2);result.TV.BLACK=tv;result.MNT.BLACK=n-tv;continue;}
+ const keys=new Set([...found.values()].map(r=>r.key));
+ const has=(mode:Mode,stage:string)=>['','OC','LCM'].some(scope=>keys.has(mode+':'+stage+':'+scope));
+ let sharedBlack:number|undefined;
+ for(const {key,mode,stage,n} of found.values()){
+  if(!mode){
+   if(has('TV','BLACK')||has('MNT','BLACK'))throw Error('共享黑胶与分区黑胶同时存在，不能重复计算');
+   sharedBlack=(sharedBlack??0)+n;
+   if(!Number.isSafeInteger(sharedBlack))throw Error('共享黑胶合计超出安全整数');
+   continue;
+  }
   const dest=stage==='TOTAL'?'PEEL':stage;
   if(stage==='TOTAL'&&(has(mode,'PEEL')||has(mode,'POL')))throw Error(mode+' POL 汇总与明细重复');
-  if(key.endsWith(':OC')||key.endsWith(':LCM'))if(found.has(mode+':'+stage+':'))throw Error(mode+' '+stage+' 工序汇总和 OC/LCM 明细并存，不能重复计算');
+  if((key.endsWith(':OC')||key.endsWith(':LCM'))&&keys.has(mode+':'+stage+':'))throw Error(mode+' '+stage+' 工序汇总和 OC/LCM 明细并存，不能重复计算');
   const total=(result[mode][dest]??0)+n;
   if(!Number.isSafeInteger(total))throw Error(mode+' '+dest+' 合计超出安全整数');
   result[mode][dest]=total;
  }
+ if(sharedBlack!==undefined){result.TV.BLACK=Math.round(sharedBlack*.2);result.MNT.BLACK=sharedBlack-result.TV.BLACK;}
  return result;
 }
 export function readRwSnapshot(raw:unknown):RwSnapshot{
