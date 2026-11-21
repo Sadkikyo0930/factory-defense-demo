@@ -46,7 +46,10 @@ export function simulate(s:Scenario,f:Formation):Simulation {
   for(const r of resources)if(r.active.length&&r.end<=time+1e-8)finish(r);
   while(arrival<arrivals.length&&arrivals[arrival].at<=time+1e-8){const i=arrivals[arrival++].i,l=s.lots[i];if(l.count)enqueue({lot:i,first:0,count:l.count,step:0,queued:time},l.source);}
   if(time>=s.duration)break;dispatch();maxActive=Math.max(maxActive,resources.reduce((n,r)=>n+r.active.reduce((a,p)=>a+p.count,0),0));
-  const next=Math.min(s.duration,arrivals[arrival]?.at??Infinity,...resources.filter(r=>r.active.length).map(r=>r.end));if(next<=time+1e-9)throw Error('时间调度未前进');time=next;
+  const next=Math.min(s.duration,arrivals[arrival]?.at??Infinity,...resources.filter(r=>r.active.length).map(r=>r.end));// Service durations are fractional. A strictly later event must progress even when the gap is below an arbitrary epsilon.
+  // Only reject actual non-advancement; preserve the deadlock guard and never invent completion.
+  if(!(next>time))throw Error('时间调度未前进：当前 '+time+'，下一事件 '+next);
+  time=next;
  }
  const remaining:Parcel[]=[];for(const stage of stages)remaining.push(...queues[stage]);for(const r of resources)remaining.push(...r.active);
  for(const p of remaining)ledger[paths[p.lot][p.step]].closing+=p.count;

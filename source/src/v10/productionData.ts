@@ -292,6 +292,9 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
  }
  if(snapshot||plan){s.synthetic=false;s.id='production:'+mode+':'+shift+':'+date;s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date;s.sourceNote=(s.productionBlock?s.productionBlock+'。':'')+'期初为日报时点快照；预计 NG 是独立预测任务，到料时间为演练假设。';}
  s.targets={...(snapshot?.date.replace(/-/g,'')===date?snapshot.targets[mode]:{}),TAPE:0,BUBBLE:0};s.confirmedTargetsOnly=true;
+ // A confirmed report/plan has only opening inventory and forecast input unless an independent external lot was explicitly retained.
+ // Do not require a second manual acknowledgement for the absence of external IN.
+ if(!s.lots.some(l=>l.source==='external'&&l.count>0))s.inConfirmed=true;
  s.conditionalPOLConfirmed=!s.lots.some(l=>l.kind==='POL'&&l.count>0&&['PEEL','POL','BUBBLE'].includes(l.stage)&&(l.cut===undefined||l.black===undefined));
  validate(s,{},false);
  return s;

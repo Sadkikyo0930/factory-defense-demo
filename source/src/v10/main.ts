@@ -74,7 +74,7 @@ function refresh(){const s=session.scenario,phase=session.phase;renderRoster();m
  if(uiPhase!==phase){uiPhase=phase;if(phase==='battle')$('combat-hud').append($('skip-battle'));else document.querySelector('footer')!.insertBefore($('skip-battle'),$('retry-battle'));if(phase==='battle')$('notice').textContent='布阵已锁定';}
 }
 scene.onChange=()=>{if(performance.now()-lastTick>90){lastTick=performance.now();refresh();}};
-function start(){try{session.begin();for(const d of document.querySelectorAll<HTMLDialogElement>('dialog[open]'))d.close();refresh();resize();scene.start();return true;}catch(e){session.cancelFailedPresentation();scene.refresh();refresh();say(e);return false;}}
+function start(){try{session.begin();refresh();resize();scene.start();return true;}catch(e){session.cancelFailedPresentation();scene.refresh();refresh();say(e);throw e;}}
 $('battle-start').onclick=()=>modes.begin(start);
 $('clear-formation').onclick=()=>{try{session.clear();scene.refresh();refresh();}catch(e){say(e);}};
 function retry(){try{session.retry();dialog('battle-result').close();scene.progress=0;scene.refresh();refresh();say('已恢复原始情景，可调整布阵；没有把期末 WIP 作为新期初。');}catch(e){say(e);}}

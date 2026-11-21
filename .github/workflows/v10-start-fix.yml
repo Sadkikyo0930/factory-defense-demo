@@ -1,0 +1,30 @@
+name: V10 start-after-import isolated regression
+on:
+  push:
+    branches: [fix/v10-start-after-import-rw38-7]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:v10
+      - run: node tests/v10-bu.cjs
+      - run: node tests/v10-data-center.mjs
+      - run: node tests/v10-score-browser.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v10-rw38-7-candidate
+          path: source/dist/
