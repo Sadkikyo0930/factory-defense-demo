@@ -429,6 +429,40 @@ try{
  assert.equal(await page.locator('#pol-cut-ratio').inputValue(),'30');
  assert.equal(await page.locator('#cof').inputValue(),'3');
  await page.locator('#close-task').click();
+ // The final accepted combined import must support actual battle/settlement, without a second confirmation.
+ // Exercise all four BU/shift combinations and preserve visible errors on a failed start.
+ for(const bu of ['TV','MNT'])for(const sh of ['DAY','NIGHT']){
+  await page.locator('#bu-mode').selectOption(bu);
+  await page.locator('#work-shift').selectOption(sh);
+  const accepted=await state();
+  assert.equal(accepted.synthetic,false);
+  assert.equal(accepted.inConfirmed,true);
+  assert.equal(accepted.conditionalPOLConfirmed,true);
+  await page.locator('#import-report').click();
+  assert.equal(await page.locator('#data-conditions').isVisible(),false);
+  await page.locator('#close-data').click();
+  await page.locator('#clear-formation').click();
+  await page.locator('#element-roster [data-plus=BD]').click();
+  await page.locator('#battle-start').click();
+  await page.locator('#challenge-player').fill('Synthetic QA');
+  if(bu==='TV'&&sh==='DAY'){
+   await page.evaluate(()=>{
+    const s=window.v10Session,original=s.begin;
+    s.begin=function(){s.begin=original;throw Error('QA: simulated specific start error');};
+   });
+   await page.getByRole('button',{name:'确认开战'}).click();
+   assert.equal(await page.locator('#player-error').innerText(),'QA: simulated specific start error');
+   assert.equal(await page.locator('#challenge-player').isVisible(),true);
+   assert.equal(await page.evaluate(()=>window.v10Session.phase),'setup');
+  }
+  await page.getByRole('button',{name:'确认开战'}).click();
+  await page.waitForFunction(()=>window.v10Session.phase==='battle');
+  await page.locator('#skip-battle').click();
+  await page.locator('#battle-result').waitFor();
+  assert.equal(await page.evaluate(()=>window.v10Session.phase),'result');
+  await page.locator('#result-retry').click();
+ }
+ console.log('PASS rw38.7 confirmed import to named battle and settlement in all BU/shift combinations, specific failure remains visible');
  console.log('PASS rw38.5 full TV/MNT matrix in both formats, POL split, COF defaults and saved shift scope, no duplicate physical inventory');
  console.log('PASS rw38.6 INK excluded from both metrics, confirm succeeds for old and new formats, all legal workload cells and task state unchanged');
  console.log('PASS rw38.3 legacy layout and mergeArea imports, exact WIP/target reconciliation, auto NDF routing, shift isolation, and atomic rollback');

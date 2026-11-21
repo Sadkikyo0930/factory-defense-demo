@@ -36,9 +36,9 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
   e.preventDefault();try{
    const who=playerName(name.value),id=challengeId();
    active={id,player:who};completed=undefined;saving=false;saved=false;status.textContent='';
-   if(!run?.()){active=undefined;$('player-error').textContent='任务尚不能开战，请先完成任务确认。';return;}
+   if(!run?.())throw Error('开战未成功，请检查当前任务状态');
    player.close();
-  }catch(err){$('player-error').textContent=(err as Error).message;}
+  }catch(err){active=undefined;$('player-error').textContent=err instanceof Error?err.message:String(err);}
  };
  async function historyLoad(){
   const notice=$('history-status'),list=$('history-items');list.replaceChildren();notice.textContent='正在查询共享成绩库…';
