@@ -13,7 +13,7 @@ try{
  assert.equal(await page.getByRole('button',{name:'导入今日生产任务'}).count(),1);
  const cells=(bu,stage)=>page.locator('table[data-bu='+bu+'] tr[data-stage='+stage+'] td').allTextContents();
  assert.deepEqual((await cells('TV','BD')).slice(1,4),['未导入','未导入','未导入']);
- assert.equal(await page.locator('#production-data input[type=number]').count(),0);
+ assert.equal(await page.locator('#production-data input[type=number]:visible').count(),0);
  const state=()=>page.evaluate(()=>JSON.parse(JSON.stringify(window.v10Session.scenario)));
  const before=await state();
  const date='2026-11-20';
@@ -43,15 +43,15 @@ try{
  combined.rows=[...rw.rows,...inspections,...repair];
  combined.targetBaseline={version:1,rows:[...rw.targetBaseline.rows,...inspections,...repair]};
  await file('production-json',combined);assert.deepEqual(await state(),before);
- assert.deepEqual((await cells('MNT','OC_VI')).slice(1,4),['4','27','6']);
+ assert.deepEqual((await cells('MNT','OC_VI')).slice(1,4),['4','49','6']);
  assert.deepEqual((await cells('MNT','LCM_VI')).slice(1,4),['5','53','7']);
  assert.equal((await cells('TV','VI'))[1],'2');
  assert.equal((await cells('TV','BD'))[1],'10');assert.equal((await cells('MNT','BD'))[1],'7');
- assert.deepEqual((await cells('MNT','CUT')).slice(1,4),['3','无直接新增 NG','3']);
+ assert.deepEqual((await cells('MNT','CUT')).slice(1,4),['3','待确认路线','3']);
  assert.equal((await cells('TV','BLACK'))[1],'8');assert.equal((await cells('MNT','BLACK'))[1],'33');
  assert.deepEqual((await cells('MNT','REMOVE')).slice(1,4),['23','11','9']);
- assert.equal((await cells('MNT','TAPE'))[4],'82 COF（2/片）');
- assert.deepEqual((await cells('MNT','BUBBLE')).slice(1),['10','无直接新增 NG','0','19 片次']);
+ assert.equal((await cells('MNT','TAPE'))[4],'总计 104 COF（含期初，2/片）');
+ assert.deepEqual((await cells('MNT','BUBBLE')).slice(1),['10','10','0','29 片次']);
  assert.equal(await page.locator('#data-ndf-routes').count(),0);
  await page.locator('#data-confirm').click();
  assert.equal((await state()).lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),22);
@@ -134,27 +134,38 @@ try{
  assert.deepEqual(await state(),{...beforeSettings,budget:18,cofPerPiece:3,lots:beforeSettings.lots.map(l=>({...l,cof:3}))});
  assert.match(await page.evaluate(()=>{try{window.v10Session.begin();return 'unexpected';}catch(e){return e.message;}}),/生产任务数据中心/);
  await page.locator('#import-report').click();
- assert.equal((await cells('MNT','TAPE'))[4],'105 COF（3/片）');
+ assert.deepEqual([(await cells('MNT','TAPE'))[2],(await cells('MNT','TAPE'))[4]],['15 COF','总计 120 COF（含期初，3/片）']);
  await page.locator('#data-shift').selectOption('DAY');
- assert.equal((await cells('MNT','TAPE'))[4],'82 COF（2/片）');
+ assert.equal((await cells('MNT','TAPE'))[4],'总计 104 COF（含期初，2/片）');
  await page.locator('#data-shift').selectOption('NIGHT');
- assert.equal((await cells('MNT','TAPE'))[4],'105 COF（3/片）');
+ assert.equal((await cells('MNT','TAPE'))[4],'总计 120 COF（含期初，3/片）');
  await page.locator('#data-confirm-conditions').click();
  assert.match(await page.locator('#data-error').innerText(),/黑胶|切割/);
  assert.equal((await state()).conditionalPOLConfirmed,false);
- await page.locator('#data-route-cut').selectOption('yes'); // Opening WIP does not encode model-specific cutting.
- await page.locator('#data-route-black').selectOption('no');
+ await page.locator('#data-route-cut').fill('50');
+ await page.locator('#data-route-black').fill('20');
  await page.locator('#data-confirm-conditions').click();assert.equal((await state()).conditionalPOLConfirmed,true);
+ assert.equal((await cells('MNT','CUT'))[2],'3');
+ assert.equal((await cells('MNT','BLACK'))[2],'1');
  const summarize=s=>Object.fromEntries(['opening','forecast','external'].map(source=>[source,s.lots.filter(l=>l.source===source).reduce((n,l)=>n+l.count,0)]));
  assert.deepEqual(summarize(await state()),summarize(beforeSettings));
  assert.deepEqual((await state()).targets,beforeSettings.targets);
  await page.locator('#close-data').click();await page.locator('#battle-start').click();await page.locator('#challenge-player').fill('Synthetic QA');await page.getByRole('button',{name:'确认开战'}).click();
  await page.waitForFunction(()=>window.v10Session.phase==='battle');
+ await page.locator('#skip-battle').click();
+ await page.locator('#battle-result').waitFor();
+ const recap=page.locator('#detailed-recap');
+ assert.equal(await recap.locator('tr[data-stage=OUT]').count(),0);
+ assert.match(await recap.locator('tr[data-stage=OC_VI]').textContent(),/检.*OUT/);
+ assert.match(await recap.locator('tr[data-stage=LCM_VI]').textContent(),/检.*OUT/);
+ assert.match(await recap.locator('.result-metrics').textContent(),/成功 OUT \d+/);
  await page.reload();
  await page.waitForFunction(()=>window.v10Scene?.ready);
  await page.locator('#import-report').click();
  assert.equal((await cells('TV','BD'))[3],'未导入');
- assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.3');
+ assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.4');
+ assert.match(await page.title(),/V1\.0-rw38\.4/);
+ assert.equal(await page.locator('header .brand em').innerText(),'V1.0-rw38.4');
  const jobs=[
   ['REMOVE','祛除'],['TAPE','贴胶'],['BD','BD'],['UV','UV'],['PEEL','撕 POL'],['POL','贴 POL'],
   ['BLACK','黑胶'],['FILM','贴膜'],['PI','PI'],['OUT','OUT']
@@ -185,6 +196,13 @@ try{
   const r=records.find(r=>r.group===group&&r.stage===stage);
   const addition=stage==='OC_VI'?extraOc:r===tape?extraTape:undefined;
   const row=await cells(group,stage);
+  if(stage==='OUT'){assert.equal(row.length,0);continue;}
+  if(stage==='VI'||stage==='OC_VI'){
+   const out=records.find(r=>r.group===group&&r.stage==='OUT');
+   assert.equal(row[1],'待检 '+(r.today+(addition?.today??0))+' / 待 OUT '+out.today);
+   assert.equal(row[3],'待检 '+(r.target+(addition?.target??0))+' / 待 OUT '+out.target);
+   continue;
+  }
   assert.equal(row[1],String(r.today+(addition?.today??0)),group+' '+stage+' opening');
   assert.equal(row[3],String(r.target+(addition?.target??0)),group+' '+stage+' target');
  }
@@ -199,7 +217,7 @@ try{
  assert.equal(saved.targets.OUT,first.targets.OUT+2);
  assert.equal(saved.lots.find(l=>l.stage==='OUT'&&l.source==='opening').count,11);
  assert.deepEqual(saved.forecast,first.forecast);
- assert.equal((await cells('MNT','OC_VI'))[1],String(oc.today+extraOc.today+2));
+ assert.match((await cells('MNT','OC_VI'))[1],new RegExp('待检 '+(oc.today+extraOc.today+2)+' / 待 OUT'));
  for(const field of ['today','target']){
   const bad=structuredClone(second);
   const list=field==='today'?bad.rows:bad.targetBaseline.rows;
@@ -244,9 +262,9 @@ try{
  const authoritative=makeFull(records);
  authoritative.productionPlan={...plan,rows:plan.rows.map((r,i)=>i===0?{...r,expectedDay:{POL:8,BD:11,NDF:12,FILM:13},expectedNight:{POL:1,BD:2,NDF:3,FILM:4}}:r)};
  await file('production-json',authoritative);
- for(const [stage,count] of [['PEEL','8'],['REMOVE','11'],['VI','12'],['FILM','13']])assert.equal((await cells('TV',stage))[2],count);
+ for(const [stage,count] of [['PEEL','8'],['REMOVE','11'],['VI','44'],['FILM','13']])assert.equal((await cells('TV',stage))[2],count);
  await page.locator('#data-shift').selectOption('NIGHT');
- for(const [stage,count] of [['PEEL','1'],['REMOVE','2'],['VI','3'],['FILM','4']])assert.equal((await cells('TV',stage))[2],count);
+ for(const [stage,count] of [['PEEL','1'],['REMOVE','2'],['VI','10'],['FILM','4']])assert.equal((await cells('TV',stage))[2],count);
  await page.locator('#data-discard').click();
  assert.deepEqual(await state(),verified);
  const unresolved={...loaded,productionPlan:{...plan,rows:[...plan.rows,row('AB238AAA1','238','MNT',100,0,[33,35,268,4])]}};
@@ -255,6 +273,60 @@ try{
  await page.locator('#data-confirm').click();
  assert.match(await page.locator('#data-error').innerText(),/AB238AAA1.*未命中/);
  assert.deepEqual(await state(),verified);
+ await page.locator('#data-discard').click();
+ const sample=(model,sizeCode,bu,POL,BD,NDF,FILM)=>({
+  model,sizeCode,bu,dayQty:10000,nightQty:1000,expectedDay:{POL,BD,NDF,FILM},expectedNight:{POL:3,BD:4,NDF:5,FILM:1}
+ });
+ const routedPlan={...plan,rows:[
+  sample('AB315AAA1','315','TV',20,86,476,2),sample('AB315AAA2','315','TV',37,0,0,0),
+  {...sample(lcmModel,'238','MNT',60,207,600,18),PANELTYPE:'OC',OUTTYPE:'OC'},
+  {...sample(ocModel,'238','MNT',98,0,761,0),PANELTYPE:'LCM',OUTTYPE:'LCM'},
+  sample('AB700AAA1','700','TV',10,10,10,10)
+ ],rules:{AB315AAA1:{polBlack:false,filmBlack:true},AB315AAA2:{polBlack:false},
+  [lcmModel]:{cut:false,polBlack:true,filmBlack:true},[ocModel]:{cut:false,polBlack:true}},
+ ratios:{TV:{DAY:{blackRatio:.35},NIGHT:{blackRatio:0}},MNT:{DAY:{blackRatio:.62,cutRatio:.38},NIGHT:{blackRatio:.25,cutRatio:0}}}};
+ await file('production-json',{...loaded,productionPlan:routedPlan});
+ for(const [group,expected] of Object.entries({
+  TV:{REMOVE:86,TAPE:'172 COF',BD:86,UV:86,PEEL:57,POL:57,BUBBLE:57,BLACK:20,FILM:2,PI:143,VI:621},
+  MNT:{REMOVE:207,TAPE:'414 COF',BD:207,UV:207,PEEL:158,POL:158,BUBBLE:158,CUT:60,BLACK:98,FILM:18,PI:365,OC_VI:1144,LCM_VI:600}
+ }))for(const [stage,count] of Object.entries(expected))assert.equal((await cells(group,stage))[2],String(count),group+' '+stage);
+ assert.equal((await cells('TV','OUT')).length+(await cells('MNT','OUT')).length,0);
+ assert.equal((await cells('TV','TAPE'))[4],'总计 352 COF（含期初，2/片）');
+ assert.equal((await cells('MNT','TAPE'))[4],'总计 916 COF（含期初，2/片）');
+ assert.match((await cells('MNT','OC_VI'))[4],/NDF 761 \/ 维修后 383/);
+ assert.match((await cells('MNT','LCM_VI'))[4],/NDF 600 \/ 维修后 0/);
+ await page.locator('#data-confirm').click();
+ const forecastTotal=s=>s.lots.filter(l=>l.source==='forecast').reduce((n,l)=>n+l.count,0);
+ assert.equal(forecastTotal(await state()),621);
+ assert.ok((await state()).lots.filter(l=>l.kind==='FILM'&&l.source==='forecast').every(l=>!l.black));
+ await page.locator('#data-shift').selectOption('NIGHT');
+ assert.equal(forecastTotal(await state()),26);
+ assert.equal((await cells('TV','PI'))[2],'14');
+ assert.equal((await cells('TV','BLACK'))[2],'0');
+ await page.locator('#data-shift').selectOption('DAY');
+ await page.locator('#close-data').click();
+ await page.locator('#bu-mode').selectOption('MNT');
+ assert.equal(forecastTotal(await state()),1744);
+ assert.ok((await state()).lots.filter(l=>l.source==='forecast').every(l=>['REMOVE','PEEL','FILM','OC_VI','LCM_VI'].includes(l.stage)));
+ assert.equal((await state()).lots.filter(l=>l.source==='forecast'&&l.black).reduce((n,l)=>n+l.count,0),98);
+ assert.equal((await state()).lots.filter(l=>l.source==='forecast'&&l.cut).reduce((n,l)=>n+l.count,0),60);
+ await page.locator('#import-report').click();
+ const valid=await state();
+ const invalidRatio={...routedPlan,ratios:{...routedPlan.ratios,MNT:{DAY:{cutRatio:1.2}}}};
+ await page.locator('#production-json').setInputFiles({name:'invalid-ratio.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...loaded,productionPlan:invalidRatio}))});
+ await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('POL 比例无效'));
+ assert.deepEqual(await state(),valid);
+ const revisedPlan={...routedPlan,ratios:{...routedPlan.ratios,
+  MNT:{...routedPlan.ratios.MNT,DAY:{blackRatio:.5,cutRatio:.25}}}};
+ const revisedRows=loaded.rows.map(r=>r.group==='MNT'&&r.stage==='BD'?{...r,today:r.today+1,target:r.target+2}:r);
+ await file('production-json',{...makeFull(revisedRows),productionPlan:revisedPlan});
+ assert.equal((await cells('MNT','BLACK'))[2],'79');
+ assert.equal((await cells('MNT','CUT'))[2],'40');
+ await page.locator('#data-confirm').click();
+ assert.equal((await state()).targets.BD,valid.targets.BD+2);
+ assert.equal((await state()).lots.find(l=>l.source==='opening'&&l.stage==='BD').count,valid.lots.find(l=>l.source==='opening'&&l.stage==='BD').count+1);
+ assert.equal(forecastTotal(await state()),1744);
+ console.log('PASS rw38.4 TV/MNT complete route matrix, configured black/cut, skipped unsupported size, no duplicate OUT or physical forecast');
  console.log('PASS rw38.3 legacy layout and mergeArea imports, exact WIP/target reconciliation, auto NDF routing, shift isolation, and atomic rollback');
  assert.deepEqual(errors,[]);console.log('PASS V3.8-shaped import, atomic rollback, fresh targets, scoped jobs, NDF routing, independent COF, derived bubble WIP and physical conservation');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

@@ -1,4 +1,4 @@
-import {Scenario,Formation,Step,Kind,Lot,stages,towers,route,serviceTime,stageSlots,validate,clone} from './spec';
+import {Scenario,Formation,Step,Kind,Lot,stages,towers,route,serviceTime,stageSlots,validate,clone,inspectionStage,type InspectionStage} from './spec';
 export interface Ledger {opening:number;external:number;forecast:number;upstream:number;processed:number;closing:number;cof:number;busySeconds:number;}
 export interface TraceEvent {time:number;stage:Step;kind:Kind;count:number;failed:number;}
 /** Read-only presentation journal. Never used for dispatch, yield, accounting or scoring. */
@@ -20,9 +20,9 @@ export function simulate(s:Scenario,f:Formation):Simulation {
  const timeline:TraceEvent[]=[],batches:Simulation['batches']=[],outByKind=kindCounts(),failedByKind=kindCounts(),exits:Parcel[]=[],failures:Parcel[]=[],resourceBusy:Record<string,number>={};
  const visualServices:VisualService[]=[];
  function enqueue(p:Parcel,source:'opening'|'external'|'forecast'|'upstream') {const stage=paths[p.lot][p.step];queues[stage].push(p);ledger[stage][source]+=p.count;}
- const eligible=(stage:Step,p:Parcel)=>stage==='BUBBLE'||s.lots[p.lot].mode===(s.mode??(stage==='CUT'?'MNT':'TV'));
- const hasWork=(stage:Step)=>queues[stage].some(p=>eligible(stage,p));
- function take(stage:Step,max=1){const picked:Parcel[]=[];let count=0,index=0;while(count<max&&(index=queues[stage].findIndex(p=>eligible(stage,p)))>=0){const p=queues[stage][index],n=Math.min(max-count,p.count);picked.push({...p,count:n});p.first+=n;p.count-=n;count+=n;if(!p.count)queues[stage].splice(index,1);}return picked;}
+ const eligible=(stage:Step,p:Parcel,operator?:Step)=>stage==='BUBBLE'||(s.lots[p.lot].mode===(s.mode??(stage==='CUT'?'MNT':'TV'))&&(stage!=='OUT'||inspectionStage(s.lots[p.lot])===operator));
+ const hasWork=(stage:Step,operator?:Step)=>queues[stage].some(p=>eligible(stage,p,operator));
+ function take(stage:Step,max=1,operator?:Step){const picked:Parcel[]=[];let count=0,index=0;while(count<max&&(index=queues[stage].findIndex(p=>eligible(stage,p,operator)))>=0){const p=queues[stage][index],n=Math.min(max-count,p.count);picked.push({...p,count:n});p.first+=n;p.count-=n;count+=n;if(!p.count)queues[stage].splice(index,1);}return picked;}
  function finish(r:Resource){const step=r.actual!;let failure=0;for(const p of r.active){const l=s.lots[p.lot];ledger[step].processed+=p.count;if(step==='TAPE')ledger[step].cof+=p.count*l.cof;
    if(step==='OUT'){outByKind[l.kind]+=p.count;exits.push(p);continue;}
    if(['VI','OC_VI','LCM_VI'].includes(step)&&(l.kind==='BD'||l.kind==='POL'||l.kind==='FILM'||l.kind==='REVIEW')){
@@ -35,8 +35,8 @@ export function simulate(s:Scenario,f:Formation):Simulation {
  function dispatch(){for(const stage of stages){
   const group=resources.filter(r=>r.stage===stage);if(!group.length)continue;const start=roundRobin[stage]||0;
   for(let offset=0;offset<group.length;offset++){const ix=(start+offset)%group.length,r=group[ix];if(r.active.length||s.disabled.includes(r.id))continue;
-   let actual=stage;if(['VI','OC_VI','LCM_VI'].includes(stage))actual=hasWork('OUT')?'OUT':stage; // Ship checked stock first, using the same finite operator time.
-   if(!hasWork(actual))continue;const batch=take(actual,stage==='BUBBLE'?8:1);r.active=batch;r.actual=actual;r.started=time;const duration=serviceTime(actual,s.lots[batch[0].lot]);r.end=time+duration;
+   const actual=(stage==='VI'||stage==='OC_VI'||stage==='LCM_VI')&&hasWork('OUT',stage)?'OUT':stage; // Ship checked stock using the same lane and finite operator time.
+   if(!hasWork(actual,stage))continue;const batch=take(actual,stage==='BUBBLE'?8:1,stage);r.active=batch;r.actual=actual;r.started=time;const duration=serviceTime(actual,s.lots[batch[0].lot]);r.end=time+duration;
    const busy=Math.min(duration,s.duration-time);resourceBusy[r.id]=(resourceBusy[r.id]||0)+busy;ledger[actual].busySeconds+=busy;
    for(const p of batch)visualServices.push({lotId:s.lots[p.lot].id,first:p.first,count:p.count,stage:actual,start:time,end:r.end,resource:r.id});
    roundRobin[stage]=(ix+1)%group.length;if(stage==='BUBBLE')batches.push({start:time,end:r.end,count:batch.reduce((n,p)=>n+p.count,0),modes:[...new Set(batch.map(p=>s.lots[p.lot].mode))]});
@@ -58,6 +58,18 @@ export function simulate(s:Scenario,f:Formation):Simulation {
  const conservation=total===closing+unreleased+successfulOut+failurePool;if(!conservation||!identityConservation)throw Error('产品身份或总量守恒失败');
  const visualTerminal:VisualTerminal[]=[];for(const [parcels,outcome] of [[exits,'success'],[failures,'failure'],[remaining,'wip']] as const)for(const p of parcels)visualTerminal.push({lotId:s.lots[p.lot].id,first:p.first,count:p.count,outcome,stage:paths[p.lot][p.step]});
  return {ledger,successfulOut,failurePool,input:s.lots.filter(l=>l.source==='external').reduce((n,l)=>n+l.count,0),forecastInput:s.lots.filter(l=>l.source==='forecast').reduce((n,l)=>n+l.count,0),opening:s.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),closing,unreleased,total,outByKind,failedByKind,timeline,batches,conservation,identityConservation,resourceBusy,maxActive,checks,visual:{services:visualServices,terminal:visualTerminal}};
+}
+export function outByInspection(s:Scenario,sim:Simulation){
+ const lanes:Record<InspectionStage,{opening:number;external:number;closing:number;completed:number;busySeconds:number}>={
+  VI:{opening:0,external:0,closing:0,completed:0,busySeconds:0},
+  OC_VI:{opening:0,external:0,closing:0,completed:0,busySeconds:0},
+  LCM_VI:{opening:0,external:0,closing:0,completed:0,busySeconds:0}
+ };
+ const lots=new Map(s.lots.map(l=>[l.id,l]));
+ for(const lot of s.lots)if(lot.stage==='OUT'&&lot.source!=='forecast')lanes[inspectionStage(lot)][lot.source]+=lot.count;
+ for(const terminal of sim.visual.terminal)if(terminal.stage==='OUT')lanes[inspectionStage(lots.get(terminal.lotId)!)][terminal.outcome==='success'?'completed':'closing']+=terminal.count;
+ for(const service of sim.visual.services)if(service.stage==='OUT')lanes[inspectionStage(lots.get(service.lotId)!)].busySeconds+=Math.min(service.end,s.duration)-service.start;
+ return lanes;
 }
 export interface BattleResult {schemaVersion:1;scenarioId:string;scenarioSeed:string;createdAt:string;synthetic:boolean;scenarioSnapshot:Scenario;formation:Formation;simulation:Simulation;scoreBreakdown:{target:number;staff:number;out:number;total:number;weights:Scenario['weights']};benchmarkOut:number;potential:Record<Step,number>;redundant:string[];deployed:number;notes:string[];}
 /** Fixed scenario basis: potential does not depend on the player's staffing or blocked upstream. */
