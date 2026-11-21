@@ -1,8 +1,8 @@
 import {count,normalize} from '../report';
 import {classifyMntPanel,forecastPlan,forecastLots,validPlanDate,normalizePlan,demoArrival,ngKinds, type ModelRule,type PlanRecord,type Shift} from './plan';
-import {clone,inspectionStages,route,splitPolRatios,validate, type Mode,type Step,type Lot,type Kind,type Scenario,type PolRatios} from './spec';
+import {clone,defaultPolRatio,inspectionStages,route,splitPolRatios,validate, type Mode,type Step,type Lot,type Kind,type Scenario,type PolRatios} from './spec';
 type Values=Partial<Record<Step,number>>;
-export interface RwSnapshot {date:string; opening:Record<Mode,Values>; targets:Record<Mode,Values>; warnings:string[]}
+export interface RwSnapshot {date:string; opening:Record<Mode,Values>; targets:Record<Mode,Values>; warnings:string[]; polSummary:ReadonlySet<Mode>}
 export interface RwPlan {schema:'rw-mdl-plan';version:1;records:PlanRecord[];rules:Record<string,ModelRule>;ratios?:Partial<Record<Mode,Partial<Record<Shift,PolRatios>>>>}
 export interface ProductionImport {kind:'combined'|'report'|'plan';rw?:RwSnapshot;plan?:RwPlan}
 function objectValue(value:unknown):Record<string,unknown>{
@@ -27,7 +27,7 @@ export function readProductionImport(raw:unknown):ProductionImport{
  return {kind:'report',rw:readRwSnapshot(data)};
 }
 const aliases:Record<string,Step|'TOTAL'>={祛除:'REMOVE',去除:'REMOVE',贴胶:'TAPE',BD:'BD',UV:'UV',撕POL:'PEEL',机器撕POL:'PEEL',贴POL:'POL',POL:'TOTAL',脱泡:'BUBBLE',共享脱POL:'BUBBLE',切割:'CUT',黑胶:'BLACK',覆膜:'FILM',贴膜:'FILM',修膜:'FILM',PI:'PI',VI:'VI',OCVI:'OC_VI',LCMVI:'LCM_VI',OUT:'OUT',
- 'VI/OUT':'VI','OCVI/OUT':'OC_VI','LCMVI/OUT':'LCM_VI',OC:'OC_VI',LCM:'LCM_VI',OCOUT:'OC_VI',LCMOUT:'LCM_VI',OC检验:'OC_VI',LCM检验:'LCM_VI',条件切割:'CUT',机器切割:'CUT',CUT:'CUT',黑胶维修:'BLACK',脱POL:'BUBBLE'};
+ 'VI/OUT':'VI','OCVI/OUT':'OC_VI','LCMVI/OUT':'LCM_VI',OC:'OC_VI',LCM:'LCM_VI',模组:'LCM_VI',OCOUT:'OC_VI',LCMOUT:'LCM_VI',OC检验:'OC_VI',LCM检验:'LCM_VI',条件切割:'CUT',机器切割:'CUT',CUT:'CUT',黑胶维修:'BLACK',脱POL:'BUBBLE'};
 function position(name:string,group:unknown,record?:Record<string,unknown>,location='日报'){
  const n=normalize(name),pref=/^(TV|MNT)/.exec(n)?.[1] as Mode|undefined,key=(pref?n.slice(pref.length):n).replace(/^[:：]/,'');
  if(/^(FA|DISA)/.test(key)||key.includes('拆解'))return;
@@ -57,6 +57,7 @@ function excluded(name:string,group:unknown){
  return /^(FA|DISA)/.test(key)||key.includes('拆解')||g==='SHARED'||!g&&['脱泡','共享脱POL'].includes(key);
 }
 const legacyPairs:Record<number,string>={49:'TV:REMOVE',51:'MNT:REMOVE',53:'TV:BD',55:'MNT:BD',75:'SHARED:BLACK',81:'MNT:OC_VI',87:'MNT:OC_VI'};
+const legacyLcmPairs:Record<number,string>={83:'MNT:LCM_VI',89:'MNT:LCM_VI'};
 function mergeIdentity(raw:unknown,row:number|undefined,column:number|undefined){
  if(raw===undefined)return;
  const area=objectValue(raw);
@@ -77,10 +78,10 @@ function matchesLegacyLayout(rows:unknown[]){
   const labels=signatures.get(row)??new Set<string>();
   labels.add(mode+':'+stage);signatures.set(row,labels);
  }
- return Object.entries(legacyPairs).every(([r,label])=>
-  [Number(r),Number(r)+1].every(i=>signatures.get(i)?.size===1&&signatures.get(i)?.has(label)));
+ const matches=([r,label]:[string,string])=>[Number(r),Number(r)+1].every(i=>signatures.get(i)?.size===1&&signatures.get(i)?.has(label));
+ return Object.entries(legacyPairs).every(matches)?{...legacyPairs,...Object.fromEntries(Object.entries(legacyLcmPairs).filter(matches))}:{};
 }
-function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownLayout:boolean){
+function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownPairs:Record<number,string>,polSummary?:Set<Mode>){
  const result:Record<Mode,Values>={TV:{},MNT:{}};
  type Reading={key:string;mode?:Mode;stage:Step|'TOTAL';n:number;location:string;allocated:boolean};
  const sources=new Map<string,Reading>(),seenRows=new Map<string,Reading>(),found=new Map<string,Reading>();
@@ -103,7 +104,7 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownLa
   if(row===null||row===0||column===null||column===0)throw Error('日报来源坐标无效：'+label+' '+r.name);
   const area=mergeIdentity(r.mergeArea,row,column);
   const legacyLabel=(p.stage==='BLACK'&&r.allocation==='blackGlue-20-80'?'SHARED':p.mode??'SHARED')+':'+p.stage;
-  const legacyStart=row!==undefined&&knownLayout?(legacyPairs[row]===legacyLabel?row:legacyPairs[row-1]===legacyLabel?row-1:undefined):undefined;
+  const legacyStart=row===undefined?undefined:knownPairs[row]===legacyLabel?row:knownPairs[row-1]===legacyLabel?row-1:undefined;
   const location=label+' '+r.name+(row===undefined?'':'（Excel 第 '+row+' 行'+(column===undefined?'':'，第 '+column+' 列')+'）')+(area?' 合并区 '+area:'');
   const allocated=p.stage==='BLACK'&&!!p.mode&&r.allocation==='blackGlue-20-80'&&['黑胶','黑胶维修'].includes(normalize(r.sourceName));
   const reading={...p,key,n,location,allocated};
@@ -140,6 +141,7 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownLa
   }
   const dest=stage==='TOTAL'?'PEEL':stage;
   if(stage==='TOTAL'&&(has(mode,'PEEL')||has(mode,'POL')))throw Error(mode+' POL 汇总与明细重复');
+  if(stage==='TOTAL')polSummary?.add(mode);
   if((key.endsWith(':OC')||key.endsWith(':LCM'))&&keys.has(mode+':'+stage+':'))throw Error(mode+' '+stage+' 工序汇总和 OC/LCM 明细并存，不能重复计算');
   const total=(result[mode][dest]??0)+n;
   if(!Number.isSafeInteger(total))throw Error(mode+' '+dest+' 合计超出安全整数');
@@ -151,8 +153,8 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownLa
 export function readRwSnapshot(raw:unknown):RwSnapshot{
  const r=raw as {date?:string;rows?:unknown[];source?:{tool?:string};targetBaseline?:{version:number;rows:unknown[]}};
  if(!r||typeof r.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||!validPlanDate(r.date.replace(/-/g,''))||!Array.isArray(r.rows)||!r.rows.length||r.rows.length>4000)throw Error('需要有效的 RW 日报 JSON：date 和 rows');
- const legacyTemplate=r.source?.tool==='rw-win7-vbs'&&!r.rows.some(row=>objectValue(row).mergeArea!==undefined)&&matchesLegacyLayout(r.rows);
- const warnings:string[]=[],opening=collect(r.rows,'today',warnings,legacyTemplate);
+ const legacyTemplate=r.source?.tool==='rw-win7-vbs'&&!r.rows.some(row=>objectValue(row).mergeArea!==undefined)?matchesLegacyLayout(r.rows):{};
+ const warnings:string[]=[],polSummary=new Set<Mode>(),opening=collect(r.rows,'today',warnings,legacyTemplate,polSummary);
  if(!Object.keys(opening.TV).length&&!Object.keys(opening.MNT).length)throw Error('未找到 TV / MNT 维修岗位数据');
  if(r.targetBaseline!==undefined){
   if(!r.targetBaseline||r.targetBaseline.version!==1||!Array.isArray(r.targetBaseline.rows)||r.targetBaseline.rows.length>2000)throw Error('日报目标格式无效');
@@ -160,7 +162,7 @@ export function readRwSnapshot(raw:unknown):RwSnapshot{
  }
  const targets=r.targetBaseline?collect(r.targetBaseline.rows,'target',warnings,legacyTemplate):{TV:{},MNT:{}};
  if(r.targetBaseline&&!Object.keys(targets.TV).length&&!Object.keys(targets.MNT).length)throw Error('目标记录没有可映射的 TV / MNT 岗位');
- return {date:r.date,opening,targets,warnings};
+ return {date:r.date,opening,targets,warnings,polSummary};
 }
 export function readRwPlan(raw:unknown):RwPlan{
  const data=objectValue(raw);
@@ -214,22 +216,21 @@ export function readRwPlan(raw:unknown):RwPlan{
  }
  return {schema:p.schema,version:p.version,records,rules,ratios};
 }
+export function taskRatios(plan:RwPlan|undefined,mode:Mode,shift:Shift,saved?:PolRatios):Required<PolRatios>{
+ return {blackRatio:defaultPolRatio,cutRatio:defaultPolRatio,...plan?.ratios?.[mode]?.[shift],...saved};
+}
 export function projected(plan:RwPlan|undefined,date:string,mode:Mode,shift:Shift,confirmed?:PolRatios){
  if(!plan?.records.some(r=>{if(r.date!==date)return false;const model=normalizePlan(r);return model.valid&&model.bu===mode;}))return;
  const result=forecastPlan(plan.records,date,mode,shift);
  const unrouted=mode==='MNT'?result.batches.filter(b=>b.kind==='REVIEW'&&!plan.rules[b.model]?.panel):[];
  const routable={...result,batches:result.batches.filter(b=>!unrouted.includes(b))};
  const rules=Object.fromEntries(routable.batches.map(b=>[b.model,plan.rules[b.model]??{}]));
- const ratios={...plan.ratios?.[mode]?.[shift],...confirmed};
- const lots=splitPolRatios(forecastLots(routable,mode,rules,demoArrival,true),mode,ratios);
- const values:Values={},pending=new Set<Step>();
+ const ratios=taskRatios(plan,mode,shift,confirmed);
+ const lots=splitPolRatios(forecastLots(routable,mode,rules,demoArrival,true),mode,ratios).map(lot=>lot.kind==='BD'?{...lot,tapeFactor:2 as const}:lot);
+ const values:Values={};
  const inspections:Partial<Record<Step,{ndf:number;repair:number}>>={};
  for(const stage of inspectionStages)inspections[stage]={ndf:0,repair:0};
  for(const lot of lots){
-  if(lot.kind==='POL'){
-   if(lot.black===undefined)pending.add('BLACK');
-   if(lot.cut===undefined)pending.add('CUT');
-  }
   for(const stage of route(lot)){
    if(stage==='OUT')continue;
    values[stage]=(values[stage]??0)+lot.count;
@@ -237,20 +238,21 @@ export function projected(plan:RwPlan|undefined,date:string,mode:Mode,shift:Shif
    if(split)split[lot.kind==='REVIEW'?'ndf':'repair']+=lot.count;
   }
  }
- return {result,values,unrouted,lots,pending,inspections};
+ return {result,values,unrouted,lots,inspections};
 }
 export function workload(opening:Values|undefined,forecast:Values|undefined,cof:number){
  const sum=(...parts:(number|undefined)[])=>parts.some(n=>n!==undefined)?parts.reduce<number>((total,n)=>total+(n??0),0):undefined;
- const tape=sum(opening?.REMOVE,forecast?.REMOVE,opening?.BD,forecast?.BD);
- return {tape:tape===undefined?undefined:tape*cof,
-  bubble:sum(opening?.PEEL,forecast?.PEEL,opening?.POL,forecast?.POL),
+ const openingTape=sum(opening?.REMOVE,opening?.BD),forecastTape=forecast?(forecast.REMOVE??0)+(forecast.BD??0):undefined;
+ const tape=sum(openingTape,forecastTape);
+ return {tape:tape===undefined?undefined:tape*cof,tapeOpening:openingTape===undefined?undefined:openingTape*cof,tapeAdded:forecastTape===undefined?undefined:forecastTape*cof,
+  bubble:sum(opening?.PEEL,opening?.POL,forecast?(forecast.PEEL??0)+(forecast.POL??0):undefined),
   bubbleOpening:sum(opening?.PEEL,opening?.BUBBLE)};
 }
 export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,plan:RwPlan|undefined):Scenario{
  const s=clone(base),mode=s.mode??'TV',shift=s.shift??'DAY',date=s.date??snapshot?.date.replace(/-/g,'')??'';
  const forecast=projected(plan,date,mode,shift,s.polRatios);
  if(!snapshot&&!plan)return s;
- s.polRatios={...plan?.ratios?.[mode]?.[shift],...s.polRatios};
+ s.polRatios=taskRatios(plan,mode,shift,s.polRatios);
  s.productionBlock=undefined;
  s.lots=s.lots.filter(l=>l.source==='external'&&!base.synthetic);
  s.forecast=undefined;
@@ -260,7 +262,7 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
    const stage=key as Step;
    if(!n)continue;
    const kind:Kind=['PEEL','POL','BUBBLE','CUT','BLACK'].includes(stage)?'POL':stage==='FILM'?'FILM':['PI','VI','OC_VI','LCM_VI','OUT'].includes(stage)?'UNKNOWN':'BD';
-   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:s.cofPerPiece??2,mntPanel:mode==='MNT'?(stage==='LCM_VI'?'LCM':'OC'):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined};
+   const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:s.cofPerPiece??2,mntPanel:mode==='MNT'?(stage==='LCM_VI'?'LCM':'OC'):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined,tapeBeforeBD:stage==='BD'};
    opening.push(lot);
   }
   s.lots.push(...splitPolRatios(opening,mode,s.polRatios));
@@ -274,7 +276,7 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
   s.forecast={plan:forecast.result.plan,version:forecast.result.version,amounts:Object.fromEntries(ngKinds.map(k=>[k,forecast.result.diagnostic[k].count])) as NonNullable<Scenario['forecast']>['amounts']};
  }
  if(snapshot||plan){s.synthetic=false;s.id='production:'+mode+':'+shift+':'+date;s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date;s.sourceNote=(s.productionBlock?s.productionBlock+'。':'')+'期初为日报时点快照；预计 NG 是独立预测任务，到料时间为演练假设。';}
- s.targets=snapshot?.date.replace(/-/g,'')===date?{...snapshot.targets[mode],BUBBLE:0}:{};s.confirmedTargetsOnly=true;
+ s.targets={...(snapshot?.date.replace(/-/g,'')===date?snapshot.targets[mode]:{}),TAPE:0,BUBBLE:0};s.confirmedTargetsOnly=true;
  s.conditionalPOLConfirmed=!s.lots.some(l=>l.kind==='POL'&&l.count>0&&['PEEL','POL','BUBBLE'].includes(l.stage)&&(l.cut===undefined||l.black===undefined));
  validate(s,{},false);
  return s;

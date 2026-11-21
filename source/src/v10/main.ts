@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import './style.css';
 import {BattleSession} from './session';
 import {Battlefield,positions} from './Battlefield';
-import {visibleTowers,Step,label,element,colors,assets,stageSlots,clone,configurePOL,automaticBubble,stageLabel,webVersion} from './spec';
+import {visibleTowers,Step,label,element,colors,assets,stageSlots,clone,automaticBubble,stageLabel,webVersion} from './spec';
 import {setupDataCenter} from './productionDataUI';
 import {setupModeUI} from './modeUI';
 import {rendererChoice,recordRuntime,runtimeError,sampleRuntime} from '../runtime';
@@ -84,16 +84,19 @@ function showResult(){void modes.finish();refresh();renderResults($('result-cont
 $('open-result').onclick=showResult;
 scene.onFinish=showResult;$('close-result').onclick=()=>dialog('battle-result').close();
 $('export-result').onclick=()=>{if(!session.result)return;const blob=new Blob([JSON.stringify(session.result,null,2)],{type:'application/json'}),a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download='factory-v10-battle-result.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-const editableBlackLots=()=>session.scenario.lots.filter(l=>l.kind==='POL'&&l.count>0&&['PEEL','POL','BUBBLE'].includes(l.stage)&&(session.scenario.mode==='MNT'||l.source!=='forecast'));
-let initialBlack='',initialCof=2;
+const ratioField=$('black-ratio-field');
+ratioField.replaceChildren('黑胶比例（%）',ratioField.querySelector('input')!);
+const cutField=document.createElement('label');cutField.id='cut-ratio-field';
+cutField.innerHTML='MNT切割比例（%）<input id="pol-cut-ratio" type="number" min="0" max="100" step="any" value="30">';
+ratioField.after(cutField);
+let initialCof=2;
 function openTask(){
  if(session.phase!=='setup'){say('开战后任务参数已锁定');return;}
- const s=session.scenario,eligible=editableBlackLots(),total=eligible.reduce((n,l)=>n+l.count,0);
+ const s=session.scenario,ratios=dataCenter.ratiosFor(s);
  $('task-error').textContent='';
- $('black-ratio-field').hidden=!s.synthetic||!total;
- initialBlack=String(total?100*eligible.filter(l=>l.black).reduce((n,l)=>n+l.count,0)/total:0);
+ ratioField.hidden=false;cutField.hidden=s.mode!=='MNT';
  initialCof=s.cofPerPiece??s.lots[0]?.cof??2;
- for(const [id,value] of Object.entries({budget:s.budget,cof:initialCof,'yield-bd':s.yield.BD,'yield-pol':s.yield.POL,'weight-target':s.weights.target,'weight-staff':s.weights.staff,'weight-out':s.weights.out,'pol-black-ratio':initialBlack}))($(id) as HTMLInputElement).value=String(value);
+ for(const [id,value] of Object.entries({budget:s.budget,cof:initialCof,'yield-bd':s.yield.BD,'yield-pol':s.yield.POL,'weight-target':s.weights.target,'weight-staff':s.weights.staff,'weight-out':s.weights.out,'pol-black-ratio':ratios.blackRatio*100,'pol-cut-ratio':ratios.cutRatio*100}))($(id) as HTMLInputElement).value=String(value);
  dialog('task-dialog').showModal();
 }
 $('task-settings').onclick=openTask;
@@ -105,14 +108,8 @@ $('apply-task').onclick=()=>{
   s.budget=read('budget');s.yield.BD=read('yield-bd');s.yield.POL=read('yield-pol');
   s.weights={target:read('weight-target'),staff:read('weight-staff'),out:read('weight-out')};
   const cof=read('cof');s.cofPerPiece=cof;if(cof!==initialCof)for(const lot of s.lots)lot.cof=cof;
-  if(s.synthetic&&!$('black-ratio-field').hidden){
-   const black=read('pol-black-ratio')/100;
-   if(black!==Number(initialBlack)/100){
-    const eligible=editableBlackLots(),total=eligible.reduce((n,l)=>n+l.count,0);
-    configurePOL(s,black,s.mode==='MNT'?eligible.filter(l=>l.cut).reduce((n,l)=>n+l.count,0)/total:undefined);
-   }
-  }
-  session.updateScenario(s);dialog('task-dialog').close();scene.refresh();refresh();say('本班参数已保存。');
+  dataCenter.saveTask(s,{blackRatio:read('pol-black-ratio')/100,cutRatio:s.mode==='MNT'?read('pol-cut-ratio')/100:dataCenter.ratiosFor(s).cutRatio});
+  dialog('task-dialog').close();scene.refresh();refresh();say('本班参数已保存。');
  }catch(e){$('task-error').textContent=(e as Error).message;}
 };
 // Disabled controls and API guards both apply; synthetic DOM events cannot bypass phase checks.

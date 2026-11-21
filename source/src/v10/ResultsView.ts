@@ -10,12 +10,14 @@ export function renderResults(body:HTMLElement,r:BattleResult,s:Scenario){body.r
  const details=document.createElement('details');details.id='detailed-recap';const summary=document.createElement('summary');summary.textContent='生产复盘';details.append(summary);
  const metrics=document.createElement('p');metrics.className='result-metrics';metrics.textContent=`期初 ${sim.opening} + 独立 IN ${sim.input} + 预测 NG 任务量 ${sim.forecastInput} = 期末 ${sim.closing} + 成功 OUT ${sim.successfulOut} + 本轮失败返修 ${sim.failurePool}。部署 ${r.deployed} 人；同情景可行 OUT 基准 ${r.benchmarkOut}。`;details.append(metrics);
  const table=document.createElement('table');table.innerHTML='<thead><tr><th>工序</th><th>期初</th><th>独立 IN</th><th>预测 NG</th><th>实际流入</th><th>完成</th><th>期末 / 目标</th><th>状态</th><th>工时 / COF</th></tr></thead>';const tbody=document.createElement('tbody');
+ const openingByStage=new Map<string,number>();
+ for(const lot of s.lots)if(lot.source==='opening')openingByStage.set(lot.stage,(openingByStage.get(lot.stage)??0)+lot.count);
  for(const stage of rows){
   const l=sim.ledger[stage],shipping=out[stage as InspectionStage],tr=document.createElement('tr'),met=!missed.includes(stage);
   tr.dataset.stage=stage;if(!met)tr.className='missed';
   const target=l.closing+' / '+(s.targets[stage]??(s.confirmedTargetsOnly?'未设':0));
   const outTarget=stage===outTargetLane?'（OUT 总待 '+sim.ledger.OUT.closing+' / 目标 '+(s.targets.OUT??'未设')+'）':'';
-  for(const value of [stageLabel(stage,s),l.opening+(shipping?.opening??0),l.external+(shipping?.external??0),l.forecast,l.upstream,
+  for(const value of [stageLabel(stage,s),(openingByStage.get(stage)??0)+(shipping?.opening??0),l.external+(shipping?.external??0),l.forecast,l.upstream,
    shipping?l.processed+' 检 / '+shipping.completed+' OUT':l.processed,
    shipping?'待检 '+target+'；待 OUT '+shipping.closing+outTarget:target,
    s.confirmedTargetsOnly&&s.targets[stage]===undefined&&!(stage===outTargetLane&&s.targets.OUT!==undefined)?'不考核':met?'达标':'未达标',

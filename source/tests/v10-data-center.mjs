@@ -18,7 +18,7 @@ try{
  const before=await state();
  const date='2026-11-20';
  const rw={date,rows:[{name:'TV BD',today:10},{name:'MNT BD',today:7},{name:'MNT 切割',today:3},{name:'黑胶',today:41},{name:'FA',today:76},{name:'TV Disa',today:999}],targetBaseline:{version:1,rows:[{name:'BD',group:'TV',target:0},{name:'BD',group:'MNT',target:9},{name:'切割',group:'MNT',target:3},{name:'黑胶',group:'SHARED',target:11}]}};
- async function file(id,obj){await page.locator('#'+id).setInputFiles({name:'synthetic.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(obj))});await page.locator('#data-pending').waitFor();}
+ async function file(id,obj){await page.locator('#'+id).setInputFiles({name:'synthetic.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(obj))});try{await page.locator('#data-pending').waitFor({timeout:5000});}catch(e){throw new Error('Import preview failed: '+await page.locator('#data-error').innerText(),{cause:e});}}
  const expected=(qty,rates)=>Object.fromEntries(['POL','BD','NDF','FILM'].map((kind,i)=>[kind,qty*rates[i]/10000]));
  const row=(model,sizeCode,bu,dayQty,nightQty,rates)=>({model,sizeCode,bu,dayQty,nightQty,expectedDay:expected(dayQty,rates),expectedNight:expected(nightQty,rates)});
  const lcmModel='AB238AA31M',ocModel='AB238AAM2B';
@@ -47,11 +47,12 @@ try{
  assert.deepEqual((await cells('MNT','LCM_VI')).slice(1,4),['5','53','7']);
  assert.equal((await cells('TV','VI'))[1],'2');
  assert.equal((await cells('TV','BD'))[1],'10');assert.equal((await cells('MNT','BD'))[1],'7');
- assert.deepEqual((await cells('MNT','CUT')).slice(1,4),['3','待确认路线','3']);
+ assert.deepEqual((await cells('MNT','CUT')).slice(1,4),['3','6','3']);
  assert.equal((await cells('TV','BLACK'))[1],'8');assert.equal((await cells('MNT','BLACK'))[1],'33');
  assert.deepEqual((await cells('MNT','REMOVE')).slice(1,4),['23','11','9']);
- assert.equal((await cells('MNT','TAPE'))[4],'总计 104 COF（含期初，2/片）');
- assert.deepEqual((await cells('MNT','BUBBLE')).slice(1),['10','10','0','29 片次']);
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 104 COF/);
+ assert.deepEqual((await cells('MNT','BUBBLE')).slice(1,4),['10','10','0']);
+ assert.match((await cells('MNT','BUBBLE'))[4],/^29 片次/);
  assert.equal(await page.locator('#data-ndf-routes').count(),0);
  await page.locator('#data-confirm').click();
  assert.equal((await state()).lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),22);
@@ -105,7 +106,8 @@ try{
  assert.equal((await cells('TV','BD'))[1],'10');
  assert.equal((await state()).targets.PEEL,10);
  const aggregate=(await state()).lots.filter(l=>l.kind==='POL'&&['PEEL','POL'].includes(l.stage));
- assert.deepEqual(aggregate.map(l=>[l.stage,l.count]),[['PEEL',6]]);
+ assert.ok(aggregate.every(l=>l.stage==='PEEL'));assert.equal(aggregate.reduce((n,l)=>n+l.count,0),6);
+ assert.match((await cells('TV','BUBBLE'))[4],/^6 片次.*POL 汇总归撕 POL/);
  assert.equal((await state()).forecast,undefined);
  assert.equal((await cells('TV','REMOVE'))[2],'未导入');
  // V3.7 emits already-allocated black glue rows; the game must not split them again.
@@ -120,7 +122,7 @@ try{
  assert.equal(mnt.targets.OC_VI,6);assert.equal(mnt.targets.LCM_VI,7);
  assert.equal(mnt.targets.BUBBLE,0);
  assert.equal(mnt.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0),90);
- assert.equal(mnt.lots.find(l=>l.stage==='BUBBLE'&&l.source==='opening').count,4);
+ assert.equal(mnt.lots.filter(l=>l.stage==='BUBBLE'&&l.source==='opening').reduce((n,l)=>n+l.count,0),4);
  assert.ok(mnt.lots.every(l=>l.mode==='MNT'));assert.ok(mnt.lots.some(l=>l.stage==='LCM_VI'&&l.source==='forecast'));
  assert.ok(mnt.lots.some(l=>l.stage==='OC_VI'&&l.source==='forecast'));
  assert.ok(mnt.lots.filter(l=>l.kind!=='REVIEW'&&l.source==='forecast').every(l=>l.mntPanel==='OC'));
@@ -128,25 +130,23 @@ try{
  const beforeSettings=await state();
  await page.locator('#task-settings').click();
  assert.equal(await page.locator('#task-dialog details,#task-dialog table,#task-dialog input[type=checkbox],#use-demo').count(),0);
- assert.equal(await page.locator('#black-ratio-field').isVisible(),false);
+ assert.equal(await page.locator('#pol-black-ratio').inputValue(),'30');
+ assert.equal(await page.locator('#pol-cut-ratio').inputValue(),'30');
  await page.screenshot({path:'artifacts/v10-compact-task.png'});
- await page.locator('#budget').fill('18');await page.locator('#cof').fill('3');await page.locator('#apply-task').click();
- assert.deepEqual(await state(),{...beforeSettings,budget:18,cofPerPiece:3,lots:beforeSettings.lots.map(l=>({...l,cof:3}))});
- assert.match(await page.evaluate(()=>{try{window.v10Session.begin();return 'unexpected';}catch(e){return e.message;}}),/生产任务数据中心/);
+ await page.locator('#budget').fill('18');await page.locator('#cof').fill('3');
+ await page.locator('#pol-black-ratio').fill('101');await page.locator('#apply-task').click();assert.deepEqual(await state(),beforeSettings);
+ await page.locator('#pol-black-ratio').fill('20');await page.locator('#pol-cut-ratio').fill('50');await page.locator('#apply-task').click();
+ assert.equal((await state()).budget,18);assert.equal((await state()).cofPerPiece,3);
  await page.locator('#import-report').click();
- assert.deepEqual([(await cells('MNT','TAPE'))[2],(await cells('MNT','TAPE'))[4]],['15 COF','总计 120 COF（含期初，3/片）']);
+ assert.equal((await cells('MNT','TAPE'))[2],'30 COF');assert.match((await cells('MNT','TAPE'))[4],/^总计 120 COF/);
  await page.locator('#data-shift').selectOption('DAY');
- assert.equal((await cells('MNT','TAPE'))[4],'总计 104 COF（含期初，2/片）');
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 104 COF/);
+ assert.equal((await cells('MNT','CUT'))[2],'6');
  await page.locator('#data-shift').selectOption('NIGHT');
- assert.equal((await cells('MNT','TAPE'))[4],'总计 120 COF（含期初，3/片）');
- await page.locator('#data-confirm-conditions').click();
- assert.match(await page.locator('#data-error').innerText(),/黑胶|切割/);
- assert.equal((await state()).conditionalPOLConfirmed,false);
- await page.locator('#data-route-cut').fill('50');
- await page.locator('#data-route-black').fill('20');
- await page.locator('#data-confirm-conditions').click();assert.equal((await state()).conditionalPOLConfirmed,true);
- assert.equal((await cells('MNT','CUT'))[2],'3');
- assert.equal((await cells('MNT','BLACK'))[2],'1');
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 120 COF/);
+ assert.equal((await state()).conditionalPOLConfirmed,true);
+ assert.equal((await cells('MNT','CUT'))[2],'5');
+ assert.equal((await cells('MNT','BLACK'))[2],'2');
  const summarize=s=>Object.fromEntries(['opening','forecast','external'].map(source=>[source,s.lots.filter(l=>l.source===source).reduce((n,l)=>n+l.count,0)]));
  assert.deepEqual(summarize(await state()),summarize(beforeSettings));
  assert.deepEqual((await state()).targets,beforeSettings.targets);
@@ -197,6 +197,8 @@ try{
   const addition=stage==='OC_VI'?extraOc:r===tape?extraTape:undefined;
   const row=await cells(group,stage);
   if(stage==='OUT'){assert.equal(row.length,0);continue;}
+  assert.match(row[4],/片次|COF/);
+  if(stage==='TAPE'){assert.match(row[1],/COF/);assert.equal(row[3],'0');continue;}
   if(stage==='VI'||stage==='OC_VI'){
    const out=records.find(r=>r.group===group&&r.stage==='OUT');
    assert.equal(row[1],'待检 '+(r.today+(addition?.today??0))+' / 待 OUT '+out.today);
@@ -239,12 +241,13 @@ try{
  const pairs=[
   [49,'TV祛除','TV',12,123,'REMOVE'],[51,'MNT祛除','MNT',31,133,'REMOVE'],
   [53,'TV BD','TV',34,140,'BD'],[55,'MNT BD','MNT',56,150,'BD'],
-  [75,'黑胶','SHARED',55,65,'BLACK'],[81,'MNT OC','MNT',77,45,'OC_VI'],[87,'MNT OC','MNT',24,9,'OC_VI']
+  [75,'黑胶','SHARED',55,65,'BLACK'],[81,'MNT OC','MNT',77,45,'OC_VI'],[87,'MNT OC','MNT',24,9,'OC_VI'],
+  [83,'MNT模组','MNT',31,70,'LCM_VI'],[89,'MNT模组','MNT',6,19,'LCM_VI']
  ];
  const checkPairs=async()=>{
   for(const [group,stage,opening,target] of [
    ['TV','REMOVE',12,123],['TV','BD',34,140],['MNT','REMOVE',31,133],['MNT','BD',56,150],
-   ['TV','BLACK',11,13],['MNT','BLACK',44,52],['MNT','OC_VI',101,54],['TV','PI',14,16]
+   ['TV','BLACK',11,13],['MNT','BLACK',44,52],['MNT','OC_VI',101,54],['MNT','LCM_VI',37,89],['TV','PI',14,16]
   ]){
    const values=await cells(group,stage);
    assert.deepEqual([values[1],values[3]],[String(opening),String(target)],group+' '+stage);
@@ -284,15 +287,15 @@ try{
   sample('AB700AAA1','700','TV',10,10,10,10)
  ],rules:{AB315AAA1:{polBlack:false,filmBlack:true},AB315AAA2:{polBlack:false},
   [lcmModel]:{cut:false,polBlack:true,filmBlack:true},[ocModel]:{cut:false,polBlack:true}},
- ratios:{TV:{DAY:{blackRatio:.35},NIGHT:{blackRatio:0}},MNT:{DAY:{blackRatio:.62,cutRatio:.38},NIGHT:{blackRatio:.25,cutRatio:0}}}};
+ ratios:{TV:{NIGHT:{blackRatio:0}}}};
  await file('production-json',{...loaded,productionPlan:routedPlan});
  for(const [group,expected] of Object.entries({
-  TV:{REMOVE:86,TAPE:'172 COF',BD:86,UV:86,PEEL:57,POL:57,BUBBLE:57,BLACK:20,FILM:2,PI:143,VI:621},
-  MNT:{REMOVE:207,TAPE:'414 COF',BD:207,UV:207,PEEL:158,POL:158,BUBBLE:158,CUT:60,BLACK:98,FILM:18,PI:365,OC_VI:1144,LCM_VI:600}
+  TV:{REMOVE:86,TAPE:'344 COF',BD:86,UV:86,PEEL:57,POL:57,BUBBLE:57,BLACK:34,FILM:2,PI:143,VI:621},
+  MNT:{REMOVE:207,TAPE:'828 COF',BD:207,UV:207,PEEL:158,POL:158,BUBBLE:158,CUT:95,BLACK:95,FILM:18,PI:365,OC_VI:1144,LCM_VI:600}
  }))for(const [stage,count] of Object.entries(expected))assert.equal((await cells(group,stage))[2],String(count),group+' '+stage);
  assert.equal((await cells('TV','OUT')).length+(await cells('MNT','OUT')).length,0);
- assert.equal((await cells('TV','TAPE'))[4],'总计 352 COF（含期初，2/片）');
- assert.equal((await cells('MNT','TAPE'))[4],'总计 916 COF（含期初，2/片）');
+ assert.match((await cells('TV','TAPE'))[4],/^总计 352 COF/);
+ assert.match((await cells('MNT','TAPE'))[4],/^总计 916 COF/);
  assert.match((await cells('MNT','OC_VI'))[4],/NDF 761 \/ 维修后 383/);
  assert.match((await cells('MNT','LCM_VI'))[4],/NDF 600 \/ 维修后 0/);
  await page.locator('#data-confirm').click();
@@ -307,25 +310,72 @@ try{
  await page.locator('#close-data').click();
  await page.locator('#bu-mode').selectOption('MNT');
  assert.equal(forecastTotal(await state()),1744);
+ const mockRows=[
+  ['TV祛除','TV',12,123],['TV BD','TV',34,140],['TV UV','TV',5,8],['TV撕POL','TV',7,4],['TV贴POL','TV',11,6],
+  ['TV脱POL','TV',4,7],['TV贴膜','TV',2,1],['TV PI','TV',6,5],['TV VI','TV',17,10],['TV OUT','TV',3,2],
+  ['MNT祛除','MNT',31,133],['MNT BD','MNT',56,150],['MNT UV','MNT',8,10],['MNT撕POL','MNT',13,8],
+  ['MNT贴POL','MNT',12,9],['MNT脱POL','MNT',6,11],['MNT切割','MNT',4,3],['MNT贴膜','MNT',3,2],
+  ['MNT PI','MNT',8,7],['MNT OC','MNT',101,54],['MNT模组','MNT',37,89],['MNT OUT','MNT',5,4],
+  ['黑胶','SHARED',55,65]
+ ].map(([name,group,today,target])=>({name,group,today,target}));
+ const exact={...makeFull(mockRows),productionPlan:routedPlan};
+ await page.locator('#import-report').click();
+ await file('production-json',exact);await page.locator('#data-confirm').click();await page.locator('#close-data').click();
+ await page.locator('#bu-mode').selectOption('TV');
+ await page.locator('#task-settings').click();
+ assert.equal(await page.locator('#pol-black-ratio').inputValue(),'30');
+ assert.equal(await page.locator('#pol-cut-ratio').isVisible(),false);
+ await page.locator('#cof').fill('3');await page.locator('#apply-task').click();
+ await page.locator('#import-report').click();
+ const expectedOpening={
+  TV:{REMOVE:[12,86,123,98],TAPE:[138,516,0,654],BD:[34,86,140,120],UV:[5,86,8,91],PEEL:[7,57,4,64],
+   POL:[11,57,6,68],BUBBLE:[11,57,0,132],BLACK:[11,34,13,45],FILM:[2,2,1,4],PI:[6,143,5,149],VI:['待检 17 / 待 OUT 3',621,'待检 10 / 待 OUT 2',641]},
+  MNT:{REMOVE:[31,207,133,238],TAPE:[174,828,0,1002],BD:[56,207,150,263],UV:[8,207,10,215],PEEL:[13,158,8,171],
+   POL:[12,158,9,170],BUBBLE:[19,158,0,341],CUT:[4,95,3,99],BLACK:[44,95,52,139],FILM:[3,18,2,21],PI:[8,365,7,373],
+   OC_VI:['待检 101 / 待 OUT 5',1144,'待检 54 / 待 OUT 4',1250],LCM_VI:[37,600,89,637]}
+ };
+ for(const [group,stages] of Object.entries(expectedOpening))for(const [stage,[opening,added,target,total]] of Object.entries(stages)){
+  const row=await cells(group,stage),cof=stage==='TAPE'?' COF':'';
+  assert.deepEqual(row.slice(1,4),[opening+cof,added+cof,String(target)],group+' '+stage);
+  assert.ok(row[4].startsWith(cof?'总计 '+total+cof:total+' 片次'),group+' '+stage+' total: '+row[4]);
+ }
+ await page.screenshot({path:'artifacts/v10-rw38-4-workload.png'});
+ await page.locator('#close-data').click();await page.locator('#bu-mode').selectOption('MNT');
+ for(const [ratio,expected] of [['0',0],['100',316],['30',95]]){
+  await page.locator('#task-settings').click();await page.locator('#pol-black-ratio').fill(ratio);await page.locator('#pol-cut-ratio').fill(ratio);
+  await page.locator('#apply-task').click();await page.locator('#import-report').click();
+  assert.equal((await cells('MNT','BLACK'))[2],String(expected));assert.equal((await cells('MNT','CUT'))[2],String(expected));
+  assert.equal((await cells('MNT','BLACK'))[1],'44');
+  assert.equal(forecastTotal(await state()),1744);
+  await page.locator('#close-data').click();
+ }
  assert.ok((await state()).lots.filter(l=>l.source==='forecast').every(l=>['REMOVE','PEEL','FILM','OC_VI','LCM_VI'].includes(l.stage)));
- assert.equal((await state()).lots.filter(l=>l.source==='forecast'&&l.black).reduce((n,l)=>n+l.count,0),98);
- assert.equal((await state()).lots.filter(l=>l.source==='forecast'&&l.cut).reduce((n,l)=>n+l.count,0),60);
+ assert.equal((await state()).lots.filter(l=>l.source==='forecast').reduce((n,l)=>n+l.count*(Number(!!l.black)+Number(!!l.extraBlack)),0),95);
+ assert.equal((await state()).lots.filter(l=>l.source==='forecast').reduce((n,l)=>n+l.count*(Number(!!l.cut)+Number(!!l.extraCut)),0),95);
  await page.locator('#import-report').click();
  const valid=await state();
  const invalidRatio={...routedPlan,ratios:{...routedPlan.ratios,MNT:{DAY:{cutRatio:1.2}}}};
  await page.locator('#production-json').setInputFiles({name:'invalid-ratio.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...loaded,productionPlan:invalidRatio}))});
  await page.waitForFunction(()=>document.querySelector('#data-error').textContent.includes('POL 比例无效'));
  assert.deepEqual(await state(),valid);
- const revisedPlan={...routedPlan,ratios:{...routedPlan.ratios,
+ const revisedPlan={...routedPlan,rows:routedPlan.rows.map(r=>r.model===lcmModel?{...r,expectedDay:{...r.expectedDay,BD:r.expectedDay.BD+1}}:r),ratios:{...routedPlan.ratios,
   MNT:{...routedPlan.ratios.MNT,DAY:{blackRatio:.5,cutRatio:.25}}}};
- const revisedRows=loaded.rows.map(r=>r.group==='MNT'&&r.stage==='BD'?{...r,today:r.today+1,target:r.target+2}:r);
+ const revisedRows=mockRows.map(r=>r.name==='MNT BD'?{...r,today:r.today+1,target:r.target+2}:r);
  await file('production-json',{...makeFull(revisedRows),productionPlan:revisedPlan});
- assert.equal((await cells('MNT','BLACK'))[2],'79');
- assert.equal((await cells('MNT','CUT'))[2],'40');
+ assert.equal((await cells('MNT','BLACK'))[2],'95');
+ assert.equal((await cells('MNT','CUT'))[2],'95');
  await page.locator('#data-confirm').click();
  assert.equal((await state()).targets.BD,valid.targets.BD+2);
  assert.equal((await state()).lots.find(l=>l.source==='opening'&&l.stage==='BD').count,valid.lots.find(l=>l.source==='opening'&&l.stage==='BD').count+1);
- assert.equal(forecastTotal(await state()),1744);
+ assert.equal(forecastTotal(await state()),1745);
+ await page.locator('#close-data').click();await page.locator('#work-shift').selectOption('NIGHT');
+ await page.locator('#task-settings').click();
+ assert.equal(await page.locator('#pol-black-ratio').inputValue(),'20');
+ assert.equal(await page.locator('#pol-cut-ratio').inputValue(),'50');
+ await page.locator('#close-task').click();await page.locator('#work-shift').selectOption('DAY');await page.locator('#task-settings').click();
+ assert.equal(await page.locator('#pol-black-ratio').inputValue(),'30');
+ assert.equal(await page.locator('#pol-cut-ratio').inputValue(),'30');
+ await page.locator('#close-task').click();
  console.log('PASS rw38.4 TV/MNT complete route matrix, configured black/cut, skipped unsupported size, no duplicate OUT or physical forecast');
  console.log('PASS rw38.3 legacy layout and mergeArea imports, exact WIP/target reconciliation, auto NDF routing, shift isolation, and atomic rollback');
  assert.deepEqual(errors,[]);console.log('PASS V3.8-shaped import, atomic rollback, fresh targets, scoped jobs, NDF routing, independent COF, derived bubble WIP and physical conservation');

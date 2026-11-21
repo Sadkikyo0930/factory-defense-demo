@@ -1,4 +1,4 @@
-import {Scenario,Formation,Step,Kind,Lot,stages,towers,route,serviceTime,stageSlots,validate,clone,inspectionStage,type InspectionStage} from './spec';
+import {Scenario,Formation,Step,Kind,Lot,stages,towers,route,serviceTime,tapeCof,stageSlots,validate,clone,inspectionStage,type InspectionStage} from './spec';
 export interface Ledger {opening:number;external:number;forecast:number;upstream:number;processed:number;closing:number;cof:number;busySeconds:number;}
 export interface TraceEvent {time:number;stage:Step;kind:Kind;count:number;failed:number;}
 /** Read-only presentation journal. Never used for dispatch, yield, accounting or scoring. */
@@ -23,7 +23,7 @@ export function simulate(s:Scenario,f:Formation):Simulation {
  const eligible=(stage:Step,p:Parcel,operator?:Step)=>stage==='BUBBLE'||(s.lots[p.lot].mode===(s.mode??(stage==='CUT'?'MNT':'TV'))&&(stage!=='OUT'||inspectionStage(s.lots[p.lot])===operator));
  const hasWork=(stage:Step,operator?:Step)=>queues[stage].some(p=>eligible(stage,p,operator));
  function take(stage:Step,max=1,operator?:Step){const picked:Parcel[]=[];let count=0,index=0;while(count<max&&(index=queues[stage].findIndex(p=>eligible(stage,p,operator)))>=0){const p=queues[stage][index],n=Math.min(max-count,p.count);picked.push({...p,count:n});p.first+=n;p.count-=n;count+=n;if(!p.count)queues[stage].splice(index,1);}return picked;}
- function finish(r:Resource){const step=r.actual!;let failure=0;for(const p of r.active){const l=s.lots[p.lot];ledger[step].processed+=p.count;if(step==='TAPE')ledger[step].cof+=p.count*l.cof;
+ function finish(r:Resource){const step=r.actual!;let failure=0;for(const p of r.active){const l=s.lots[p.lot];ledger[step].processed+=p.count;if(step==='TAPE')ledger[step].cof+=p.count*tapeCof(l);
    if(step==='OUT'){outByKind[l.kind]+=p.count;exits.push(p);continue;}
    if(['VI','OC_VI','LCM_VI'].includes(step)&&(l.kind==='BD'||l.kind==='POL'||l.kind==='FILM'||l.kind==='REVIEW')){
     // Individual decisions only for actually processed sheets, never for million-sheet backlog.

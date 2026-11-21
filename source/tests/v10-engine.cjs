@@ -15,6 +15,15 @@ test('MNT inspection lanes ship their own stock using the same operator and pres
  assert.equal(one.successfulOut,3);assert.equal(shipment.OC_VI.closing,2);assert.equal(shipment.LCM_VI.completed,3);assert.equal(shipment.LCM_VI.busySeconds,360);
  const both=E.simulate(s,{OC_VI:[1],LCM_VI:[1]});assert.equal(both.successfulOut,5);assert(both.identityConservation);
 });
+test('configured 100% counts 2 POL operations per forecast sheet, and COF uses the same work basis',()=>{
+ const panels={mode:'MNT',mntPanel:'OC'};
+ const pol=S.splitPolRatios([lot('f-pol','PEEL',4,'POL',{...panels,source:'forecast'})],'MNT',{blackRatio:1,cutRatio:1});
+ const s={...base([...pol,lot('bd-in','REMOVE',3,'BD',{...panels,source:'forecast',cof:3,tapeFactor:2}),lot('bd-open','BD',2,'BD',{...panels,cof:3,tapeBeforeBD:true})]),mode:'MNT',cutMNTConfirmed:true};
+ const r=E.simulate(s,{REMOVE:[1],TAPE:[1],BD:[1],UV:[1],PEEL:[1],POL:[1],CUT:[1],BLACK:[1],PI:[1],OC_VI:[1]});
+ assert.equal(r.ledger.CUT.processed,8);assert.equal(r.ledger.BLACK.processed,8);
+ assert.equal(r.ledger.TAPE.cof,24);assert(Math.abs(r.ledger.TAPE.busySeconds-24*36000/700)<1e-8);
+ assert.equal(r.forecastInput,7);assert.equal(r.opening,2);assert.equal(r.successfulOut,9);assert(r.identityConservation);
+});
 test('all human stages require assigned available slots',()=>{for(const stage of S.towers.filter(s=>s!=='BUBBLE')){const kind=['PEEL','POL','BLACK'].includes(stage)?'POL':stage==='FILM'?'FILM':['PI','VI'].includes(stage)?'UNKNOWN':'BD',l=lot('w',stage,10,kind,{black:true}),s=base([l]);assert.equal(E.simulate(s,{}).ledger[stage].processed,0);s.disabled=[stage+'-1'];assert.equal(E.simulate(s,{[stage]:[1]}).ledger[stage].processed,0);}});
 test('one shared bubble processes mixed modes max 8/600s without workers',()=>{const s=base([lot('tv','BUBBLE',12,'POL',{black:false}),lot('mnt','BUBBLE',12,'POL',{mode:'MNT',black:false})]),r=E.simulate(s,{PI:[1],VI:[1]});assert.equal(r.ledger.BUBBLE.processed,24);assert(r.batches.every(b=>b.count<=8&&b.end-b.start>=600));assert(r.batches.some(b=>b.modes.length===2));for(let i=1;i<r.batches.length;i++)assert(r.batches[i].start>=r.batches[i-1].end);assert.throws(()=>E.simulate(s,{BUBBLE:[1]}));});
 test('COF counted separately from physical sheets',()=>{const s=base([lot('cof','TAPE',100,'BD',{cof:20})]),r=E.simulate(s,{TAPE:[1]});assert.equal(r.ledger.TAPE.processed,40);assert.equal(r.ledger.TAPE.cof,800);assert.equal(r.total,100);});
