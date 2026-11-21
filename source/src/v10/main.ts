@@ -3,13 +3,13 @@ import Phaser from 'phaser';
 import './style.css';
 import {BattleSession} from './session';
 import {Battlefield,positions} from './Battlefield';
-import {visibleTowers,Step,label,element,colors,assets,stageSlots,clone,configurePOL,automaticBubble,stageLabel} from './spec';
+import {visibleTowers,Step,label,element,colors,assets,stageSlots,clone,configurePOL,automaticBubble,stageLabel,webVersion} from './spec';
 import {setupDataCenter} from './productionDataUI';
 import {setupModeUI} from './modeUI';
 import {rendererChoice,recordRuntime,runtimeError,sampleRuntime} from '../runtime';
 const diagnostics=document.getElementById('runtime-diagnostics');
-document.title='工厂攻防战 V1.0 · 元素维修防线';document.body.dataset.version='v10';
-document.body.innerHTML=`<header><div class="brand"><span class="brand-symbol">⚙</span><div><b>工厂攻防战 <em>V1.0</em></b><small>元素维修防线 · 班组布阵演练</small></div></div><div id="phase-label">战前布阵</div><button id="task-settings">任务设置</button><button id="fullscreen">全屏</button></header>
+document.title='工厂攻防战 '+webVersion+' · 元素维修防线';document.body.dataset.version='v10';
+document.body.innerHTML=`<header><div class="brand"><span class="brand-symbol">⚙</span><div><b>工厂攻防战 <em>${webVersion}</em></b><small>元素维修防线 · 班组布阵演练</small></div></div><div id="phase-label">战前布阵</div><button id="task-settings">任务设置</button><button id="fullscreen">全屏</button></header>
 <div id="boot-status" role="status">正在加载元素维修战场…</div>
 <section class="mission"><div class="mission-name"><span id="scenario-name"></span><small id="data-source"></small></div><div><small>期初 WIP</small><strong id="opening-count">0</strong><span id="opening-detail"></span></div><div><small>独立新增 IN</small><strong id="in-count">0</strong><span id="in-detail"></span></div><div><small>目标期末 WIP</small><strong id="target-count">0</strong><span>候选规则 · 10 小时同班次</span></div><div class="clock"><small id="clock-title">等待开战</small><strong id="battle-clock">00:05</strong><div class="clock-track"><i id="clock-fill"></i></div></div></section>
 <div id="combat-hud"><b>元素维修防线</b><span id="combat-caption">维修军团来袭</span><strong id="combat-clock">00:05</strong></div><main class="battle-layout"><aside class="roster"><div class="roster-heading"><b>元素兵种</b><span id="staff-count">0 / 20</span></div><p>按岗位布阵 · 点击 ＋ 或拖到对应阵地</p><div id="element-roster"></div><div class="roster-note">共享脱泡自动生效</div></aside><section id="game" aria-label="Phaser 元素维修塔防战场"></section></main>
@@ -121,5 +121,5 @@ document.addEventListener('change',e=>{if(session.phase!=='setup'&&(e.target as 
 $('fullscreen').onclick=()=>{if(document.fullscreenElement)void document.exitFullscreen();else void document.documentElement.requestFullscreen();};
 const resize=()=>{const rect=$('game').getBoundingClientRect();game.scale.resize(rect.width,rect.height);};window.addEventListener('resize',resize);document.addEventListener('fullscreenchange',resize);if(typeof ResizeObserver!=='undefined')new ResizeObserver(resize).observe($('game'));
 choice.canvas.addEventListener('webglcontextlost',()=>runtimeError('WebGL上下文丢失；已计算的战绩不会改变，可刷新后重新进入演练'));
-sampleRuntime(()=>({version:'V1.0',phase:session.phase,renderer:choice.webgl?'WebGL':'Canvas',sprites:scene.units.length+scene.monsters.length}));recordRuntime('version','V1.0 candidate');refresh();
+sampleRuntime(()=>({version:webVersion,phase:session.phase,renderer:choice.webgl?'WebGL':'Canvas',sprites:scene.units.length+scene.monsters.length}));recordRuntime('version',webVersion);refresh();
 if(new URLSearchParams(location.search).has('qa'))Object.assign(window,{v10Session:session,v10Game:game,v10Scene:scene});

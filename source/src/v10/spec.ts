@@ -1,3 +1,4 @@
+export const webVersion='V1.0-rw38.4';
 export const stages=['REMOVE','TAPE','BD','UV','PEEL','POL','BUBBLE','CUT','BLACK','FILM','PI','VI','OC_VI','LCM_VI','OUT'] as const;
 export type Step=typeof stages[number];
 export type Kind='BD'|'POL'|'FILM'|'REVIEW'|'UNKNOWN';
@@ -10,11 +11,15 @@ export const assets:Partial<Record<Step,string>>={REMOVE:'remove',TAPE:'acf',BD:
 export const equipment:Partial<Record<Step,string>>={REMOVE:'remove',TAPE:'acf_tape',BD:'bd_bond',UV:'uv',PEEL:'pol_peel',POL:'pol_laminate',BUBBLE:'debubble',BLACK:'black_glue',FILM:'film_repair',PI:'inspection_pi'};
 export const slots:Record<Step,number>={REMOVE:3,TAPE:1,BD:2,UV:1,PEEL:1,POL:2,BUBBLE:1,CUT:0,BLACK:1,FILM:1,PI:2,VI:4,OC_VI:0,LCM_VI:0,OUT:0};
 export interface Lot {id:string;kind:Kind;mode:Mode;stage:Step;count:number;source:'opening'|'external'|'forecast';at:number;cof:number;black?:boolean;cut?:boolean;mntPanel?:'OC'|'LCM';}
-export interface Scenario {schemaVersion:1;mode?:Mode;shift?:'DAY'|'NIGHT';date?:string;configurationVersion?:string;productionBlock?:string;cofPerPiece?:number;forecast?:{plan:number;version:string;amounts:Record<'BD'|'POL'|'REVIEW'|'FILM',number>};id:string;name:string;synthetic:boolean;seed:string;duration:number;budget:number;lots:Lot[];targets:Partial<Record<Step,number>>;confirmedTargetsOnly?:boolean;importance?:Partial<Record<Step,number>>;yield:Record<Kind,number>;weights:{target:number;staff:number;out:number};sourceNote:string;rawFA:number;inConfirmed:boolean;conditionalPOLConfirmed?:boolean;cutTVConfirmed:boolean;cutMNTConfirmed:boolean;disabled:string[];minimum:Partial<Record<Step,number>>;}
+export interface PolRatios {blackRatio?:number;cutRatio?:number}
+export interface Scenario {schemaVersion:1;mode?:Mode;shift?:'DAY'|'NIGHT';date?:string;configurationVersion?:string;productionBlock?:string;cofPerPiece?:number;polRatios?:PolRatios;forecast?:{plan:number;version:string;amounts:Record<'BD'|'POL'|'REVIEW'|'FILM',number>};id:string;name:string;synthetic:boolean;seed:string;duration:number;budget:number;lots:Lot[];targets:Partial<Record<Step,number>>;confirmedTargetsOnly?:boolean;importance?:Partial<Record<Step,number>>;yield:Record<Kind,number>;weights:{target:number;staff:number;out:number};sourceNote:string;rawFA:number;inConfirmed:boolean;conditionalPOLConfirmed?:boolean;cutTVConfirmed:boolean;cutMNTConfirmed:boolean;disabled:string[];minimum:Partial<Record<Step,number>>;}
 export type Formation=Partial<Record<Step,number[]>>;
+export type InspectionStage='VI'|'OC_VI'|'LCM_VI';
+export const inspectionStages:readonly InspectionStage[]=['VI','OC_VI','LCM_VI'];
+export function inspectionStage(lot:Pick<Lot,'mode'|'mntPanel'>):InspectionStage{return lot.mode==='MNT'?(lot.mntPanel==='LCM'?'LCM_VI':'OC_VI'):'VI';}
 export function route(lot:Pick<Lot,'kind'|'stage'|'black'|'cut'|'mode'|'mntPanel'>):Step[]{
  const vi:Step=lot.mode==='MNT'&&lot.mntPanel?(lot.mntPanel==='OC'?'OC_VI':'LCM_VI'):'VI';
- const full:Step[]=lot.kind==='BD'?['REMOVE','TAPE','BD','UV','PI','VI','OUT']:lot.kind==='POL'?['PEEL','POL','BUBBLE',...(lot.cut?['CUT' as Step]:[]),...(lot.black?['BLACK' as Step]:[]),'PI','VI','OUT']:lot.kind==='FILM'?['FILM',...(lot.black?['BLACK' as Step]:[]),'PI','VI','OUT']:lot.kind==='REVIEW'?['VI','OUT']:['PI','VI','OUT'];
+ const full:Step[]=lot.kind==='BD'?['REMOVE','TAPE','BD','UV','PI','VI','OUT']:lot.kind==='POL'?['PEEL','POL','BUBBLE',...(lot.cut?['CUT' as Step]:[]),...(lot.black?['BLACK' as Step]:[]),'PI','VI','OUT']:lot.kind==='FILM'?['FILM','VI','OUT']:lot.kind==='REVIEW'?['VI','OUT']:['PI','VI','OUT'];
  if(vi!=='VI')full[full.indexOf('VI')]=vi;
  const start=full.indexOf(lot.stage);if(start<0)throw Error('期初阶段与维修类型不相容：'+lot.stage);return full.slice(start);
 }
@@ -22,10 +27,29 @@ export function capacity(stage:Step,lot:Lot):number {if(stage==='OUT')return 300
 export function serviceTime(stage:Step,lot:Lot){if(stage==='BUBBLE')return 600;if(stage==='OUT')return 120;const rate=capacity(stage,lot);if(!rate)throw Error('工序产能未确认：'+stage);return 36000/rate*(stage==='TAPE'?lot.cof:1);}
 export const mntDemoSlots:Record<Step,number>={REMOVE:2,TAPE:1,BD:2,UV:1,PEEL:1,POL:1,BUBBLE:1,CUT:1,BLACK:1,FILM:3,PI:3,VI:0,OC_VI:4,LCM_VI:2,OUT:0};
 export const automaticBubble=(s:Scenario)=>s.mode==='MNT';
-export const stageLabel=(stage:Step,s:Scenario)=>automaticBubble(s)?(stage==='BUBBLE'?'共享脱 POL':stage==='PEEL'?'撕POL':label[stage]):label[stage];
+export const stageLabel=(stage:Step,s:Scenario)=>stage==='BUBBLE'?'共享脱 POL':automaticBubble(s)&&stage==='PEEL'?'撕POL':label[stage];
 export const visibleTowers=(s:Scenario)=>s.mode==='MNT'?stages.filter(stage=>stageSlots(stage,s)>0):towers;
 export function stageSlots(stage:Step,s:Scenario){if(s.mode==='MNT')return stage==='CUT'&&!s.cutMNTConfirmed?0:mntDemoSlots[stage];return stage==='CUT'?(s.cutMNTConfirmed?1:0):slots[stage];}
 export function clone<T>(value:T):T{return JSON.parse(JSON.stringify(value));}
+export function splitPolRatios(lots:Lot[],mode:Mode,ratios:PolRatios={}):Lot[]{
+ const groups=new Map<string,Lot>(),unaffected:Lot[]=[];
+ for(const lot of lots){
+  if(lot.kind!=='POL'||!['PEEL','POL','BUBBLE'].includes(lot.stage)){unaffected.push(lot);continue;}
+  const id=lot.id.replace(/:ratio-[01]{2}$/,'');
+  const previous=groups.get(id);
+  if(previous)previous.count+=lot.count;else groups.set(id,{...lot,id});
+ }
+ let cumulative=0,blackAllocated=0,cutAllocated=0;
+ return unaffected.concat([...groups.values()].flatMap(lot=>{
+  cumulative+=lot.count;
+  const nextBlack=Math.round(cumulative*(ratios.blackRatio??0)),nextCut=Math.round(cumulative*(mode==='MNT'?ratios.cutRatio??0:0));
+  const black=nextBlack-blackAllocated,cut=nextCut-cutAllocated,both=Math.min(black,cut);
+  blackAllocated=nextBlack;cutAllocated=nextCut;
+  return ([[both,true,true],[cut-both,true,false],[black-both,false,true],[lot.count-Math.max(black,cut),false,false]] as const)
+   .filter(([n])=>n>0)
+   .map(([count,c,b])=>({...lot,id:lot.id+':ratio-'+Number(c)+Number(b),count,cut:mode==='TV'?false:ratios.cutRatio===undefined?undefined:c,black:ratios.blackRatio===undefined?undefined:b}));
+ }));
+}
 /** Explicit scenario estimate for unknown POL model mix; never inferred from WIP. */
 export function configurePOL(s:Scenario,ratio:number,cutRatio?:number){if(!Number.isFinite(ratio)||ratio<0||ratio>1)throw Error('POL黑胶比例须在0～100%');
  if(s.mode==='MNT'){

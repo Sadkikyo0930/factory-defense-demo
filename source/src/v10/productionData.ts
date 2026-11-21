@@ -1,9 +1,9 @@
 import {count,normalize} from '../report';
 import {classifyMntPanel,forecastPlan,forecastLots,validPlanDate,normalizePlan,demoArrival,ngKinds, type ModelRule,type PlanRecord,type Shift} from './plan';
-import {clone,validate, type Mode,type Step,type Lot,type Kind,type Scenario} from './spec';
+import {clone,inspectionStages,route,splitPolRatios,validate, type Mode,type Step,type Lot,type Kind,type Scenario,type PolRatios} from './spec';
 type Values=Partial<Record<Step,number>>;
 export interface RwSnapshot {date:string; opening:Record<Mode,Values>; targets:Record<Mode,Values>; warnings:string[]}
-export interface RwPlan {schema:'rw-mdl-plan';version:1;records:PlanRecord[];rules:Record<string,ModelRule>}
+export interface RwPlan {schema:'rw-mdl-plan';version:1;records:PlanRecord[];rules:Record<string,ModelRule>;ratios?:Partial<Record<Mode,Partial<Record<Shift,PolRatios>>>>}
 export interface ProductionImport {kind:'combined'|'report'|'plan';rw?:RwSnapshot;plan?:RwPlan}
 function objectValue(value:unknown):Record<string,unknown>{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('生产任务 JSON 必须是对象');
@@ -174,7 +174,7 @@ export function readRwPlan(raw:unknown):RwPlan{
    if(typeof r.model!=='string'||r.model.length>80||typeof r.dayQty!=='number'||typeof r.nightQty!=='number'||count(r.dayQty)===null||count(r.nightQty)===null)throw Error(where+'型号或班次数量无效');
    const rec:PlanRecord={date,rawModel:r.model,day:r.dayQty,night:r.nightQty,source:'rw-combined-v3'};
    const model=normalizePlan(rec);
-   if(!model.valid||String(model.size)!==r.sizeCode||model.bu!==r.bu)throw Error(where+'型号、尺寸或 BU 不一致');
+   if(model.valid&&(String(model.size)!==r.sizeCode||model.bu!==r.bu))throw Error(where+'型号、尺寸或 BU 不一致');
    rec.expected={DAY:{POL:0,BD:0,REVIEW:0,FILM:0},NIGHT:{POL:0,BD:0,REVIEW:0,FILM:0}};
    for(const [field,qty,shift] of [['expectedDay',rec.day,'DAY'],['expectedNight',rec.night,'NIGHT']] as const){
     const values=objectValue(r[field]);
@@ -197,22 +197,47 @@ export function readRwPlan(raw:unknown):RwPlan{
  }
  const records=fromV3?p.records:p.records.map(({date,rawModel,day,night,source})=>({date,rawModel,day,night,source}));
  for(const rec of records){const model=normalizePlan(rec);if(model.valid&&model.bu==='MNT')rules[model.model]={...rules[model.model],panel:classifyMntPanel(model.model)};}
- return {schema:p.schema,version:p.version,records,rules};
+ const ratios:RwPlan['ratios']={};
+ if(data.ratios!==undefined)for(const [mode,rawShifts] of Object.entries(objectValue(data.ratios))){
+  if(mode!=='TV'&&mode!=='MNT')throw Error('POL 比例工区无效');
+  const shifts:Partial<Record<Shift,PolRatios>>={};
+  for(const [shift,rawRatio] of Object.entries(objectValue(rawShifts))){
+   if(shift!=='DAY'&&shift!=='NIGHT')throw Error('POL 比例班别无效');
+   const entry:PolRatios={};
+   for(const [key,value] of Object.entries(objectValue(rawRatio))){
+    if((key!=='blackRatio'&&key!=='cutRatio')||typeof value!=='number'||!Number.isFinite(value)||value<0||value>1||mode==='TV'&&key==='cutRatio'&&value!==0)throw Error('POL 比例无效：'+mode+' '+shift+' '+key);
+    entry[key]=value;
+   }
+   shifts[shift]=entry;
+  }
+  ratios[mode]=shifts;
+ }
+ return {schema:p.schema,version:p.version,records,rules,ratios};
 }
-export function projected(plan:RwPlan|undefined,date:string,mode:Mode,shift:Shift){
+export function projected(plan:RwPlan|undefined,date:string,mode:Mode,shift:Shift,confirmed?:PolRatios){
  if(!plan?.records.some(r=>{if(r.date!==date)return false;const model=normalizePlan(r);return model.valid&&model.bu===mode;}))return;
  const result=forecastPlan(plan.records,date,mode,shift);
- const values:Values={REMOVE:result.diagnostic.BD.count,PEEL:result.diagnostic.POL.count,FILM:result.diagnostic.FILM.count};
- if(mode==='TV')values.VI=result.diagnostic.REVIEW.count;
  const unrouted=mode==='MNT'?result.batches.filter(b=>b.kind==='REVIEW'&&!plan.rules[b.model]?.panel):[];
- if(mode==='MNT'){
- values.OC_VI=0;values.LCM_VI=0;
- for(const b of result.batches.filter(x=>x.kind==='REVIEW')){
-  const panel=plan.rules[b.model]?.panel;
-  if(panel){const stage=panel==='OC'?'OC_VI':'LCM_VI';values[stage]=(values[stage]??0)+b.count;}
+ const routable={...result,batches:result.batches.filter(b=>!unrouted.includes(b))};
+ const rules=Object.fromEntries(routable.batches.map(b=>[b.model,plan.rules[b.model]??{}]));
+ const ratios={...plan.ratios?.[mode]?.[shift],...confirmed};
+ const lots=splitPolRatios(forecastLots(routable,mode,rules,demoArrival,true),mode,ratios);
+ const values:Values={},pending=new Set<Step>();
+ const inspections:Partial<Record<Step,{ndf:number;repair:number}>>={};
+ for(const stage of inspectionStages)inspections[stage]={ndf:0,repair:0};
+ for(const lot of lots){
+  if(lot.kind==='POL'){
+   if(lot.black===undefined)pending.add('BLACK');
+   if(lot.cut===undefined)pending.add('CUT');
+  }
+  for(const stage of route(lot)){
+   if(stage==='OUT')continue;
+   values[stage]=(values[stage]??0)+lot.count;
+   const split=inspections[stage];
+   if(split)split[lot.kind==='REVIEW'?'ndf':'repair']+=lot.count;
+  }
  }
- }
- return {result,values,unrouted};
+ return {result,values,unrouted,lots,pending,inspections};
 }
 export function workload(opening:Values|undefined,forecast:Values|undefined,cof:number){
  const sum=(...parts:(number|undefined)[])=>parts.some(n=>n!==undefined)?parts.reduce<number>((total,n)=>total+(n??0),0):undefined;
@@ -223,32 +248,29 @@ export function workload(opening:Values|undefined,forecast:Values|undefined,cof:
 }
 export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,plan:RwPlan|undefined):Scenario{
  const s=clone(base),mode=s.mode??'TV',shift=s.shift??'DAY',date=s.date??snapshot?.date.replace(/-/g,'')??'';
- const forecast=projected(plan,date,mode,shift);
+ const forecast=projected(plan,date,mode,shift,s.polRatios);
  if(!snapshot&&!plan)return s;
+ s.polRatios={...plan?.ratios?.[mode]?.[shift],...s.polRatios};
  s.productionBlock=undefined;
  s.lots=s.lots.filter(l=>l.source==='external'&&!base.synthetic);
  s.forecast=undefined;
  if(snapshot?.date.replace(/-/g,'')===date){
-  const stages=snapshot.opening[mode];
+  const stages=snapshot.opening[mode],opening:Lot[]=[];
   for(const [key,n] of Object.entries(stages)){
    const stage=key as Step;
    if(!n)continue;
    const kind:Kind=['PEEL','POL','BUBBLE','CUT','BLACK'].includes(stage)?'POL':stage==='FILM'?'FILM':['PI','VI','OC_VI','LCM_VI','OUT'].includes(stage)?'UNKNOWN':'BD';
    const lot:Lot={id:'rw-opening:'+stage,mode,stage,kind,count:n,at:0,source:'opening',cof:s.cofPerPiece??2,mntPanel:mode==='MNT'?(stage==='LCM_VI'?'LCM':'OC'):undefined,cut:stage==='CUT'?true:undefined,black:stage==='BLACK'?true:undefined};
-   s.lots.push(lot);
+   opening.push(lot);
   }
+  s.lots.push(...splitPolRatios(opening,mode,s.polRatios));
   s.rawFA=0;
  }
  if(forecast&&plan){
-  const rules:Record<string,ModelRule>=Object.create(null);
-  for(const b of forecast.result.batches)rules[b.model]=plan.rules[b.model]??{};
   if(forecast.unrouted.length){
    const details=forecast.unrouted.slice(0,4).map(b=>b.model+'（'+b.count+' 片）').join('、');
    s.productionBlock='MNT '+(shift==='DAY'?'白班':'夜班')+' NDF 型号无法判定 OC / LCM：'+details+'；BAB 前缀、第 10 位、第 8 位均未命中';
-  }else s.lots.push(...forecastLots(forecast.result,mode,rules,demoArrival,true).map((lot,i)=>{
-   const rule=rules[forecast.result.batches[i].model];
-   return {...lot,cof:s.cofPerPiece??2,...(lot.kind==='POL'?{cut:rule.cut,black:rule.polBlack}:{})};
-  }));
+  }else s.lots.push(...forecast.lots.map(lot=>({...lot,cof:s.cofPerPiece??2})));
   s.forecast={plan:forecast.result.plan,version:forecast.result.version,amounts:Object.fromEntries(ngKinds.map(k=>[k,forecast.result.diagnostic[k].count])) as NonNullable<Scenario['forecast']>['amounts']};
  }
  if(snapshot||plan){s.synthetic=false;s.id='production:'+mode+':'+shift+':'+date;s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date;s.sourceNote=(s.productionBlock?s.productionBlock+'。':'')+'期初为日报时点快照；预计 NG 是独立预测任务，到料时间为演练假设。';}

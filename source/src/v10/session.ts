@@ -1,4 +1,4 @@
-import {Scenario,Formation,Step,Kind,clone,freeze,demoScenario,stageSlots,validate,Lot} from './spec';
+import {Scenario,Formation,Step,Kind,clone,freeze,demoScenario,stageSlots,splitPolRatios,validate,Lot,type PolRatios} from './spec';
 import {evaluate,BattleResult} from './engine';
 import {WipSnapshot,splitPOL,validateSnapshot} from '../report';
 
@@ -21,15 +21,16 @@ export class BattleSession {
  private editable(){if(this.state!=='setup')throw Error('开战后阵型、设备、参数与导入已锁定；请先返回同情景重布阵');}
  setScenario(s:Scenario){this.editable();validate(s,{});this.data=freeze(clone(s));this.clear();this.score=undefined;}
  updateScenario(s:Scenario){this.editable();validate(s,this.army,false);if(JSON.stringify(s.targets)!==JSON.stringify(this.data.targets))this.manualTargets=clone(s.targets);this.data=freeze(clone(s));}
- confirmProductionConditions(input:{confirmIn:boolean;cut?:boolean;black?:boolean}){
+ confirmProductionConditions(input:PolRatios&{confirmIn:boolean}){
   this.editable();const next=clone(this.data);
   if(input.confirmIn)next.inConfirmed=true;
   if(next.conditionalPOLConfirmed===false){
-   const lots=next.lots.filter(l=>l.kind==='POL'&&['PEEL','POL','BUBBLE'].includes(l.stage)&&l.count>0);
-   for(const lot of lots){
-    if(lot.cut===undefined){if(input.cut===undefined)throw Error('请选择未分型 POL 的切割条件');lot.cut=input.cut;}
-    if(lot.black===undefined){if(input.black===undefined)throw Error('请选择未分型 POL 的黑胶条件');lot.black=input.black;}
-   }
+   const ratios={...next.polRatios,...(input.cutRatio===undefined?{}:{cutRatio:input.cutRatio}),...(input.blackRatio===undefined?{}:{blackRatio:input.blackRatio})};
+   if(ratios.cutRatio===undefined&&next.mode==='MNT')throw Error('请确认 POL 切割比例');
+   if(ratios.blackRatio===undefined)throw Error('请确认 POL 黑胶比例');
+   if(Object.values(ratios).some(n=>!Number.isFinite(n)||n<0||n>1))throw Error('POL 比例须在 0～100%');
+   next.lots=(['opening','external','forecast'] as const).flatMap(source=>splitPolRatios(next.lots.filter(lot=>lot.source===source),next.mode??'TV',ratios));
+   next.polRatios=ratios;
    next.conditionalPOLConfirmed=true;
   }
   this.updateScenario(next);

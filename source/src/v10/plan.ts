@@ -66,14 +66,14 @@ export function forecastLots(input:ReturnType<typeof forecastPlan>,mode:Mode,rul
   if(!rule||(mode==='MNT'&&!rule.panel&&(!productionRouting||b.kind==='REVIEW')))throw Error('型号维修路径未确认：'+b.model);
   const panel=productionRouting&&mode==='MNT'&&b.kind!=='REVIEW'?'OC':rule.panel;
   const stage:Step=b.kind==='BD'?'REMOVE':b.kind==='POL'?'PEEL':b.kind==='FILM'?'FILM':mode==='TV'?'VI':panel==='OC'?'OC_VI':'LCM_VI';
-  return {id:'forecast:'+b.kind+':'+i,mode,kind:b.kind,count:b.count,source:'forecast',stage,at:arrival(b,i),cof:2,mntPanel:panel,cut:b.kind==='POL'&&rule.cut===true,black:b.kind==='POL'?rule.polBlack===true:b.kind==='FILM'&&rule.filmBlack===true};
+  return {id:'forecast:'+b.kind+':'+i,mode,kind:b.kind,count:b.count,source:'forecast',stage,at:arrival(b,i),cof:2,mntPanel:panel,cut:b.kind==='POL'&&rule.cut===true,black:b.kind==='POL'&&rule.polBlack===true};
  });
 }
 const demoModels={TV:['AB315AAA1','AB430AAA2'],MNT:['AB238AAA1','BAB270AAA2']} as const;
 export function shiftScenario(mode:Mode,shift:Shift,date:string):Scenario{
  const models=demoModels[mode],records=models.map((rawModel,i)=>({date,rawModel,day:3600+i*1700,night:2400+i*900,source:'SYNTHETIC'}));
  const forecast=forecastPlan(records,date,mode,shift),s=demoScenario();
- const rules:Record<string,ModelRule>={[models[0]]:{panel:'OC',cut:mode==='MNT',polBlack:true},[models[1]]:{panel:'LCM',filmBlack:mode==='MNT'}};
+ const rules:Record<string,ModelRule>={[models[0]]:{panel:'OC',cut:mode==='MNT',polBlack:true},[models[1]]:{panel:'LCM'}};
  s.mode=mode;s.shift=shift;s.date=date;s.configurationVersion=mode==='MNT'?'bu-shift-demo-v4':'bu-shift-demo-v1';s.id=[mode,shift,date,s.configurationVersion].join(':');s.seed=s.id;
  s.name=mode+' '+(shift==='DAY'?'白班':'夜班')+' · '+date+' · SYNTHETIC';
  s.sourceNote='SYNTHETIC 演练；未导入真实计划或快照。预测分类型，可能重叠；到料时刻为演练假设。单 BU 场景共享脱泡只有一台，未计另一 BU 占用。MNT 未确认的工位、产能和型号条件采用演练参数。';

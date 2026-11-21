@@ -52,7 +52,8 @@ for(const bu of ['TV','MNT'])for(const shift of ['DAY','NIGHT']){
   assert.equal(S.capacity('BD',scenario.lots[0]),115);
   assert.ok(sim.ledger.OC_VI.processed>0&&sim.ledger.LCM_VI.processed>0&&sim.ledger.CUT.processed>0);
   assert.ok(scenario.lots.some(l=>l.kind==='POL'&&!S.route(l).includes('CUT')&&!S.route(l).includes('BLACK')));
-  assert.ok(scenario.lots.some(l=>l.kind==='FILM'&&S.route(l).includes('BLACK')));
+  assert.ok(scenario.lots.some(l=>l.kind==='FILM'));
+  assert.ok(scenario.lots.filter(l=>l.kind==='FILM').every(l=>!S.route({...l,black:true}).includes('BLACK')));
   const onlyOC=E.simulate(scenario,{...formation,LCM_VI:[]});assert.equal(onlyOC.ledger.LCM_VI.processed,0);assert.ok(onlyOC.ledger.LCM_VI.closing>0);
  }else assert.equal(S.stageSlots('BD',scenario),2);
 }
