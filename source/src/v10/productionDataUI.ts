@@ -6,7 +6,7 @@ import {clone,stageLabel,visibleTowers,type Mode} from './spec';
 
 export function setupDataCenter(session:BattleSession,changed:()=>void){
  const dialog=document.createElement('dialog');dialog.id='production-data';
- dialog.innerHTML=`<div class="dialog-heading"><h2>生产任务数据中心 <small id="data-version">V1.0-rw38.2</small></h2><button id="close-data">关闭</button></div>
+ dialog.innerHTML=`<div class="dialog-heading"><h2>生产任务数据中心 <small id="data-version">V1.0-rw38.3</small></h2><button id="close-data">关闭</button></div>
  <div class="data-controls"><button id="pick-production">导入今日生产任务</button>
  <label>日期 <input type="date" id="data-date"></label><label>班次 <select id="data-shift"><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label></div>
  <input type="file" id="production-json" accept=".json,application/json" hidden>
@@ -17,7 +17,7 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
  <label id="data-black-field">未指定的 POL 黑胶条件 <select id="data-route-black"><option value="">请选择</option><option value="no">不走黑胶</option><option value="yes">需要黑胶</option></select></label>
  <button id="data-confirm-conditions">确认开战条件</button></section>
  <div id="data-tables"></div>
- <section id="data-pending" hidden><p id="data-preview-label"></p><div id="data-ndf-routes"></div>
+ <section id="data-pending" hidden><p id="data-preview-label"></p>
  <button id="data-confirm" class="primary">确认导入</button><button id="data-discard">放弃预览</button></section><p id="data-error" role="alert"></p>`;
  document.body.append(dialog);
  const entry=document.createElement('button');entry.id='import-report';entry.textContent='生产任务数据中心';document.querySelector('header')!.append(entry);
@@ -56,7 +56,10 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
     const d=forecast.result.diagnostic;
     note.textContent='预计 NG：BD '+d.BD.count+' / POL '+d.POL.count+' / 过判 '+d.REVIEW.count+' / 膜 '+d.FILM.count;
     if(forecast.result.rejected.length)note.textContent+='；'+forecast.result.rejected.length+' 条计划记录未参与（型号规则或尺寸范围）';
-    if(mode==='MNT'&&forecast.result.batches.some(b=>b.kind==='REVIEW'&&!p?.rules[b.model]?.panel))note.textContent+='；部分 NDF 型号未确认 OC / LCM，MNT 预测暂不能开战';
+    if(forecast.unrouted.length){
+     const unresolved=forecast.unrouted.reduce((sum,b)=>sum+b.count,0);
+     note.textContent+='；未分配 '+unresolved+' 片：'+forecast.unrouted.slice(0,4).map(b=>b.model).join('、')+'（型号规则未命中）';
+    }
     column.append(note);
    }
    const table=document.createElement('table');table.dataset.bu=mode;
@@ -72,21 +75,6 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
    column.append(table);body.append(column);
   }
   if(rw?.warnings.length){const note=document.createElement('p');note.textContent=rw.warnings.join('；');body.append(note);}
-  const routes=$('data-ndf-routes');routes.replaceChildren();
-  if(draft?.plan){
-   const models=new Set<string>();
-   for(const sh of ['DAY','NIGHT'] as const){
-    try{for(const b of projected(draft.plan,dateKey,'MNT',sh)?.result.batches??[])if(b.kind==='REVIEW')models.add(b.model);}catch(e){error(e);}
-   }
-   for(const model of models){
-    const label=document.createElement('label');label.textContent='NDF '+model+' ';
-    const select=document.createElement('select');
-    for(const value of ['','OC','LCM'])select.add(new Option(value||'待确认路线',value));
-    select.value=draft.plan.rules[model]?.panel??'';
-    select.onchange=()=>{if(!draft?.plan)return;draft.plan.rules[model]={...draft.plan.rules[model],panel:(select.value||undefined) as 'OC'|'LCM'|undefined};show();};
-    label.append(select);routes.append(label);
-   }
-  }
   $('data-pending').hidden=!draft;
   $('data-preview-label').textContent=draft?.kind==='combined'?'合并文件预览：日报与计划将一次确认。':draft?.kind==='report'?'旧版日报预览：文件不含生产计划；确认后预计新增 NG 显示未导入。':draft?'仅生产计划预览：保留已确认的日报快照。':'';
  }

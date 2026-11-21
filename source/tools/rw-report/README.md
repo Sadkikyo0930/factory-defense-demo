@@ -14,3 +14,8 @@
 - Chromium + Playwright 合成 JSON：TV/MNT 同名去重隔离，期末目标写入，缺失与零区分，POL 不猜测且拆分守恒，冲突和取消无副作用，历史 JSON 正常，每日导入不覆盖，刷新保持及二次确认替换通过。
 - PowerShell 选择器通过语法检查。本开发环境 CScript 启动返回 Access is denied，PowerShell 策略 Restricted，未检测到 Excel COM，未更改安全设置。VBS 尚未通过运行自测，目标列与合并表头的 VBS 端到端验证待完成。
 - 公司电脑先用允许的合成表测 BAT、中文与空格路径、UNC 源/目的、取消、重名，再用真实日报。确认当前实绩左侧两列为同一 WIP 表头的目标，对比同名 TV/MNT 不同数值。将目标移到错误列应停止生成 JSON。核对原 Excel 未改，保护提示不得跳过；可用 cscript //nologo Read-RW-WIP.vbs --self-test 验证基础助手。实际 Win7、企业保护和真实 RW 文件待验收。
+# rw38.3
+
+- `Read-RW-WIP.bat` starts the read-only Excel WIP extractor. Opening WIP and target WIP use their own metric merge ranges. A merged metric is emitted from its top-left cell, with `mergeArea` coordinates in each record. Shared black glue is split once per source range.
+- `cscript.exe //nologo Read-RW-WIP.vbs --merge-self-test` checks the merge logic in a temporary in-memory Excel workbook. It requires an approved Excel installation and Windows Script Host. The test neither opens a company workbook nor saves the synthetic workbook.
+- To reuse the current day's plan from a V3 JSON, run `.\Join-RW-Plan.ps1 -WipPath .\rw-wip.json -PlanPath .\rw-combined-old.json -OutputPath .\rw-combined-new.json` in an approved PowerShell session. The join retains the new WIP and target data and uses only the plan from the second file. It rejects differing dates and refuses to overwrite existing files. The output is ready for one preview and confirmation in the game.

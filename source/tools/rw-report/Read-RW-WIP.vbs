@@ -15,7 +15,15 @@ If WScript.Arguments.Count=1 Then
     End If
 End If
 On Error Resume Next
-Main
+If WScript.Arguments.Count=1 Then
+    If WScript.Arguments(0)="--merge-self-test" Then
+        MergeSelfTest
+    Else
+        Fail "Unknown argument."
+    End If
+Else
+    Main
+End If
 rc = Err.Number
 message = Err.Description
 Err.Clear
@@ -97,12 +105,32 @@ Sub Main()
     Set wb = Nothing
     stage = "write new UTF-8 JSON"
     WScript.Echo "[BEGIN] " & stage
-    SaveJson "{""date"":" & J(reportDate) & ",""rows"":[" & wip & "],""targetBaseline"":{""version"":1,""rows"":[" & targets & "]},""source"":{""tool"":""rw-win7-vbs"",""sheet"":" & J(U("5E38 89C4 65E5 62A5")) & ",""fileName"":" & J(fs.GetFileName(sourcePath)) & ",""todayHeader"":""WIP / today"",""targetHeader"":""WIP / target"",""readOnly"":true}}"
+    SaveJson "{""date"":" & J(reportDate) & ",""rows"":[" & wip & "],""targetBaseline"":{""version"":1,""rows"":[" & targets & "]},""source"":{""tool"":""rw-win7-vbs"",""version"":""rw38.3"",""sheet"":" & J(U("5E38 89C4 65E5 62A5")) & ",""fileName"":" & J(fs.GetFileName(sourcePath)) & ",""todayHeader"":""WIP / today"",""targetHeader"":""WIP / target"",""readOnly"":true}}"
     WScript.Echo "JSON created. Review both groups in the game before confirming."
 End Sub
 
 Sub Fail(ByVal why)
     Err.Raise vbObjectError + 420, "RW WIP", why
+End Sub
+
+Sub MergeSelfTest()
+    Dim rows
+    stage="synthetic Excel COM MergeArea test"
+    Set xl=CreateObject("Excel.Application")
+    Set wb=xl.Workbooks.Add
+    Set ws=wb.Worksheets(1)
+    ws.Range("K49:K50").Merge
+    ws.Range("L49:L50").Merge
+    ws.Range("K51:K52").Merge
+    ws.Range("K49").Value2=123
+    ws.Range("L49").Value2=12
+    ws.Range("K51").Value2=55
+    If MetricValue(49,11)<>"123" Or MetricValue(50,11)<>"null" Then Fail "Target merge did not deduplicate."
+    If MetricValue(49,12)<>"12" Or MetricValue(50,12)<>"null" Then Fail "Opening merge did not deduplicate."
+    rows=""
+    EmitMetric rows,U("9ED1 80F6"),"SHARED",51,11,"target",MetricValue(51,11)
+    If InStr(rows,"""endRow"":52")=0 Or InStr(rows,"""target"":11")=0 Or InStr(rows,"""target"":44")=0 Then Fail "Black glue split or metadata incorrect."
+    WScript.Echo "PASS real Excel COM synthetic merged cells, range metadata and black-glue split"
 End Sub
 
 Sub ReadRows(ByRef wip, ByRef targets)
@@ -202,7 +230,7 @@ Sub ReadRows(ByRef wip, ByRef targets)
         Next
     Next
     Dim group, explicitGroup, shift, name, precedingName, precedingShift, precedingGroup
-    Dim actual, goal, groupJson, rowJson, foundActual, vgroup, pos
+    Dim actual, goal, foundActual, vgroup
     group="":precedingName="":foundActual=False
     For r=startR To endR
         explicitGroup="":vgroup=""
@@ -230,8 +258,8 @@ Sub ReadRows(ByRef wip, ByRef targets)
         If IsSummary(Norm(name)) Then
             precedingName="":precedingShift=""
         Else
-            actual=Quantity(Cell(r,todayCol),"R" & r & "C" & todayCol)
-            goal=Quantity(Cell(r,targetCol),"R" & r & "C" & targetCol)
+            actual=MetricValue(r,todayCol)
+            goal=MetricValue(r,targetCol)
             If Trim(name)="" Then
                 If actual<>"null" Or goal<>"null" Then Fail "Unattributed WIP at row " & r
                 precedingName="":precedingShift=""
@@ -252,16 +280,38 @@ Sub ReadRows(ByRef wip, ByRef targets)
                         Fail "Unclassified job group at row " & r & ". Verify TV, MNT or shared."
                     End If
                 End If
-                groupJson=""
-                If label<>"SHARED" Then groupJson=",""group"":" & J(label)
-                rowJson="{""name"":" & J(name) & ",""row"":" & r
-                Append wip,rowJson & ",""today"":" & actual & ",""column"":" & todayCol & groupJson & "}"
-                Append targets,rowJson & ",""group"":" & J(label) & ",""today"":" & actual & ",""target"":" & goal & ",""column"":" & targetCol & "}"
+                If Norm(name)=U("9ED1 80F6") Or Norm(name)=U("9ED1 80F6 7EF4 4FEE") Then label="SHARED"
+                If actual<>"null" Then EmitMetric wip,name,label,r,todayCol,"today",actual
+                If goal<>"null" Then EmitMetric targets,name,label,r,targetCol,"target",goal
                 If actual<>"null" Then foundActual=True
             End If
         End If
     Next
     If Not foundActual Then Fail "No numeric WIP observation."
+End Sub
+
+Function MetricValue(ByVal r, ByVal c)
+    Dim a
+    Set a=Area(r,c)
+    MetricValue="null"
+    If r=a.Row And c=a.Column Then MetricValue=Quantity(a.Cells(1,1).Value2,"R" & r & "C" & c)
+End Function
+
+Sub EmitMetric(ByRef list, ByVal name, ByVal group, ByVal r, ByVal c, ByVal field, ByVal value)
+    Dim a, coord, tv, black
+    Set a=Area(r,c)
+    coord=",""row"":" & r & ",""column"":" & c & ",""mergeArea"":{""startRow"":" & a.Row & _
+          ",""endRow"":" & (a.Row+a.Rows.Count-1) & ",""startColumn"":" & a.Column & _
+          ",""endColumn"":" & (a.Column+a.Columns.Count-1) & "}"
+    black=U("9ED1 80F6")
+    If group="SHARED" And (Norm(name)=black Or Norm(name)=black & U("7EF4 4FEE")) Then
+        tv=Int(CDbl(value)/5+0.5)
+        coord=coord & ",""allocation"":""blackGlue-20-80"",""sourceName"":" & J(name)
+        Append list,"{""name"":" & J("TV" & black) & ",""group"":""TV""" & coord & "," & J(field) & ":" & tv & "}"
+        Append list,"{""name"":" & J("MNT" & black) & ",""group"":""MNT""" & coord & "," & J(field) & ":" & (CDbl(value)-tv) & "}"
+    Else
+        Append list,"{""name"":" & J(name) & ",""group"":" & J(group) & coord & "," & J(field) & ":" & value & "}"
+    End If
 End Sub
 
 Function ParentHeader(ByRef grid, ByVal fr, ByVal fc, ByVal r, ByVal c, ByVal wipHead, ByVal attendance)
@@ -365,7 +415,13 @@ Function Norm(ByVal value)
 End Function
 
 Function Area(ByVal r, ByVal c)
-    Set Area = ws.Cells(r,c).MergeArea
+    Dim cell
+    Set cell=ws.Cells(r,c)
+    If cell.MergeCells Then
+        Set Area=cell.MergeArea
+    Else
+        Set Area=cell
+    End If
 End Function
 
 Function Cell(ByVal r, ByVal c)

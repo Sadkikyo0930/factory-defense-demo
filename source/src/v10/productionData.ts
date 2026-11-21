@@ -1,5 +1,5 @@
 import {count,normalize} from '../report';
-import {forecastPlan,forecastLots,validPlanDate,normalizePlan,demoArrival,ngKinds,ngRates, type ModelRule,type PlanRecord,type Shift} from './plan';
+import {classifyMntPanel,forecastPlan,forecastLots,validPlanDate,normalizePlan,demoArrival,ngKinds, type ModelRule,type PlanRecord,type Shift} from './plan';
 import {clone,validate, type Mode,type Step,type Lot,type Kind,type Scenario} from './spec';
 type Values=Partial<Record<Step,number>>;
 export interface RwSnapshot {date:string; opening:Record<Mode,Values>; targets:Record<Mode,Values>; warnings:string[]}
@@ -56,10 +56,34 @@ function excluded(name:string,group:unknown){
  const g=normalize(group);
  return /^(FA|DISA)/.test(key)||key.includes('拆解')||g==='SHARED'||!g&&['脱泡','共享脱POL'].includes(key);
 }
-function collect(rows:unknown[],field:'today'|'target',warnings:string[]){
+const legacyPairs:Record<number,string>={49:'TV:REMOVE',51:'MNT:REMOVE',53:'TV:BD',55:'MNT:BD',75:'SHARED:BLACK',81:'MNT:OC_VI',87:'MNT:OC_VI'};
+function mergeIdentity(raw:unknown,row:number|undefined,column:number|undefined){
+ if(raw===undefined)return;
+ const area=objectValue(raw);
+ const coords=['startRow','endRow','startColumn','endColumn'].map(key=>count(area[key]));
+ if(coords.some(n=>n===null||n===0)||row===undefined||column===undefined)throw Error('日报合并区域坐标无效');
+ const [r1,r2,c1,c2]=coords as number[];
+ if(row<r1||row>r2||column<c1||column>c2)throw Error('日报来源行列不在合并区域内：'+row+'/'+column);
+ return [r1,r2,c1,c2].join(':');
+}
+function matchesLegacyLayout(rows:unknown[]){
+ const signatures=new Map<number,Set<string>>();
+ for(const raw of rows){
+  const r=objectValue(raw),row=count(r.row);
+  if(row===null||typeof r.name!=='string')continue;
+  const p=position(r.name,r.group,r),stage=p?.stage;
+  if(!stage)continue;
+  const mode=stage==='BLACK'&&r.allocation==='blackGlue-20-80'?'SHARED':p?.mode??'SHARED';
+  const labels=signatures.get(row)??new Set<string>();
+  labels.add(mode+':'+stage);signatures.set(row,labels);
+ }
+ return Object.entries(legacyPairs).every(([r,label])=>
+  [Number(r),Number(r)+1].every(i=>signatures.get(i)?.size===1&&signatures.get(i)?.has(label)));
+}
+function collect(rows:unknown[],field:'today'|'target',warnings:string[],knownLayout:boolean){
  const result:Record<Mode,Values>={TV:{},MNT:{}};
  type Reading={key:string;mode?:Mode;stage:Step|'TOTAL';n:number;location:string;allocated:boolean};
- const sources=new Map<string,Reading>(),seenRows=new Map<number,Reading>(),found=new Map<string,Reading>();
+ const sources=new Map<string,Reading>(),seenRows=new Map<string,Reading>(),found=new Map<string,Reading>();
  const snapshotKeys=new Set<string>(),rowKeys=new Set<string>();
  const conflict=(a:Reading,b:Reading)=>{throw Error('日报岗位数值冲突：'+a.location+' = '+a.n+'；'+b.location+' = '+b.n);};
  for(const [i,raw] of rows.entries()){
@@ -77,23 +101,27 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[]){
   const key=(p.mode??'SHARED')+':'+p.stage+':'+(p.scope??'');
   const row=r.row==null?undefined:count(r.row),column=r.column==null?undefined:count(r.column);
   if(row===null||row===0||column===null||column===0)throw Error('日报来源坐标无效：'+label+' '+r.name);
-  const location=label+' '+r.name+(row===undefined?'':'（Excel 第 '+row+' 行'+(column===undefined?'':'，第 '+column+' 列')+'）');
+  const area=mergeIdentity(r.mergeArea,row,column);
+  const legacyLabel=(p.stage==='BLACK'&&r.allocation==='blackGlue-20-80'?'SHARED':p.mode??'SHARED')+':'+p.stage;
+  const legacyStart=row!==undefined&&knownLayout?(legacyPairs[row]===legacyLabel?row:legacyPairs[row-1]===legacyLabel?row-1:undefined):undefined;
+  const location=label+' '+r.name+(row===undefined?'':'（Excel 第 '+row+' 行'+(column===undefined?'':'，第 '+column+' 列')+'）')+(area?' 合并区 '+area:'');
   const allocated=p.stage==='BLACK'&&!!p.mode&&r.allocation==='blackGlue-20-80'&&['黑胶','黑胶维修'].includes(normalize(r.sourceName));
   const reading={...p,key,n,location,allocated};
-  if(row!==undefined){
+  const origin=area?'merge:'+area:legacyStart!==undefined?'legacy:'+legacyStart:row!==undefined?'row:'+row:undefined;
+  if(origin!==undefined){
    // V3.8 can emit the two portions of one shared black-glue row.
-   const physicalKey=row+(allocated?':'+p.mode:'');
+   const physicalKey=origin+(allocated?':'+p.mode:'');
    const old=sources.get(physicalKey);
    if(old&&(old.n!==n||old.key!==key))conflict(old,reading);
-   const other=seenRows.get(row);
+   const other=seenRows.get(origin);
    if(other&&other.allocated!==allocated)conflict(other,reading);
    if(old)continue;
-   sources.set(physicalKey,reading);seenRows.set(row,reading);
+   sources.set(physicalKey,reading);seenRows.set(origin,reading);
   }
   const shift=normalize(r.shift);
   const shiftSnapshot=['DAY','NIGHT','白班','夜班'].includes(shift);
-  const snapshot=row===undefined||shiftSnapshot;
-  const bucket=snapshot?'snapshot:'+key:'row:'+row+':'+key;
+  const snapshot=origin===undefined||shiftSnapshot&&!area&&legacyStart===undefined;
+  const bucket=snapshot?'snapshot:'+key:origin+':'+key;
   if((snapshot?rowKeys:snapshotKeys).has(key))throw Error('日报来源不明确：'+location+'，同工序混用独立 Excel 行与无行号或班次快照');
   (snapshot?snapshotKeys:rowKeys).add(key);
   const old=found.get(bucket);
@@ -121,22 +149,24 @@ function collect(rows:unknown[],field:'today'|'target',warnings:string[]){
  return result;
 }
 export function readRwSnapshot(raw:unknown):RwSnapshot{
- const r=raw as {date?:string;rows?:unknown[];targetBaseline?:{version:number;rows:unknown[]}};
+ const r=raw as {date?:string;rows?:unknown[];source?:{tool?:string};targetBaseline?:{version:number;rows:unknown[]}};
  if(!r||typeof r.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)||!validPlanDate(r.date.replace(/-/g,''))||!Array.isArray(r.rows)||!r.rows.length||r.rows.length>4000)throw Error('需要有效的 RW 日报 JSON：date 和 rows');
- const warnings:string[]=[],opening=collect(r.rows,'today',warnings);
+ const legacyTemplate=r.source?.tool==='rw-win7-vbs'&&!r.rows.some(row=>objectValue(row).mergeArea!==undefined)&&matchesLegacyLayout(r.rows);
+ const warnings:string[]=[],opening=collect(r.rows,'today',warnings,legacyTemplate);
  if(!Object.keys(opening.TV).length&&!Object.keys(opening.MNT).length)throw Error('未找到 TV / MNT 维修岗位数据');
  if(r.targetBaseline!==undefined){
   if(!r.targetBaseline||r.targetBaseline.version!==1||!Array.isArray(r.targetBaseline.rows)||r.targetBaseline.rows.length>2000)throw Error('日报目标格式无效');
   if(!r.targetBaseline.rows.length)throw Error('日报目标没有记录');
  }
- const targets=r.targetBaseline?collect(r.targetBaseline.rows,'target',warnings):{TV:{},MNT:{}};
+ const targets=r.targetBaseline?collect(r.targetBaseline.rows,'target',warnings,legacyTemplate):{TV:{},MNT:{}};
  if(r.targetBaseline&&!Object.keys(targets.TV).length&&!Object.keys(targets.MNT).length)throw Error('目标记录没有可映射的 TV / MNT 岗位');
  return {date:r.date,opening,targets,warnings};
 }
 export function readRwPlan(raw:unknown):RwPlan{
  const data=objectValue(raw);
  let p=data as Partial<RwPlan>;
- if(data.kind==='rw-mdl-plan'&&data.schemaVersion===1){
+ const fromV3=data.kind==='rw-mdl-plan'&&data.schemaVersion===1;
+ if(fromV3){
   const date=data.dateKey;
   if(typeof date!=='string'||!validPlanDate(date)||typeof data.date!=='string'||data.date.replace(/-/g,'')!==date||!Array.isArray(data.rows)||!data.rows.length||data.rows.length>10000)throw Error('V3 生产计划日期或 rows 无效');
   const records:PlanRecord[]=data.rows.map((rawRow,i)=>{
@@ -145,12 +175,13 @@ export function readRwPlan(raw:unknown):RwPlan{
    const rec:PlanRecord={date,rawModel:r.model,day:r.dayQty,night:r.nightQty,source:'rw-combined-v3'};
    const model=normalizePlan(rec);
    if(!model.valid||String(model.size)!==r.sizeCode||model.bu!==r.bu)throw Error(where+'型号、尺寸或 BU 不一致');
-   const rates=ngRates.percent[model.size!];if(!rates)throw Error(where+' NG 率未配置');
-   for(const [field,qty] of [['expectedDay',rec.day],['expectedNight',rec.night]] as const){
+   rec.expected={DAY:{POL:0,BD:0,REVIEW:0,FILM:0},NIGHT:{POL:0,BD:0,REVIEW:0,FILM:0}};
+   for(const [field,qty,shift] of [['expectedDay',rec.day,'DAY'],['expectedNight',rec.night,'NIGHT']] as const){
     const values=objectValue(r[field]);
-    for(const [j,kind] of ['POL','BD','NDF','FILM'].entries()){
-     const n=values[kind],expected=qty*rates[j]/100;
-     if(typeof n!=='number'||!Number.isFinite(n)||n<0||Math.abs(n-expected)>Math.max(1e-9,expected*1e-12))throw Error(where+' '+field+' '+kind+' 预测与计划量及 NG 率不一致');
+    for(const kind of ['POL','BD','NDF','FILM'] as const){
+     const n=values[kind];
+     if(typeof n!=='number'||!Number.isFinite(n)||n<0||n>qty)throw Error(where+' '+field+' '+kind+' 预测与计划量不一致');
+     rec.expected[shift][kind==='NDF'?'REVIEW':kind]=n;
     }
    }
    return rec;
@@ -162,23 +193,26 @@ export function readRwPlan(raw:unknown):RwPlan{
  const rules:Record<string,ModelRule>=Object.create(null);
  for(const [model,r] of Object.entries(p.rules??{})){
   if(!/^[A-Z0-9_-]+$/.test(model)||!r||typeof r!=='object'||r.panel!==undefined&&!['OC','LCM'].includes(r.panel)||[r.cut,r.polBlack,r.filmBlack].some(v=>v!==undefined&&typeof v!=='boolean'))throw Error('计划型号路线规则无效');
-  rules[model]={panel:r.panel,cut:r.cut,polBlack:r.polBlack,filmBlack:r.filmBlack};
+  rules[model]={cut:r.cut,polBlack:r.polBlack,filmBlack:r.filmBlack};
  }
- return {schema:p.schema,version:p.version,records:p.records,rules};
+ const records=fromV3?p.records:p.records.map(({date,rawModel,day,night,source})=>({date,rawModel,day,night,source}));
+ for(const rec of records){const model=normalizePlan(rec);if(model.valid&&model.bu==='MNT')rules[model.model]={...rules[model.model],panel:classifyMntPanel(model.model)};}
+ return {schema:p.schema,version:p.version,records,rules};
 }
 export function projected(plan:RwPlan|undefined,date:string,mode:Mode,shift:Shift){
  if(!plan?.records.some(r=>{if(r.date!==date)return false;const model=normalizePlan(r);return model.valid&&model.bu===mode;}))return;
  const result=forecastPlan(plan.records,date,mode,shift);
  const values:Values={REMOVE:result.diagnostic.BD.count,PEEL:result.diagnostic.POL.count,FILM:result.diagnostic.FILM.count};
  if(mode==='TV')values.VI=result.diagnostic.REVIEW.count;
- else if(result.batches.filter(x=>x.kind==='REVIEW').every(b=>plan.rules[b.model]?.panel)){
+ const unrouted=mode==='MNT'?result.batches.filter(b=>b.kind==='REVIEW'&&!plan.rules[b.model]?.panel):[];
+ if(mode==='MNT'){
  values.OC_VI=0;values.LCM_VI=0;
  for(const b of result.batches.filter(x=>x.kind==='REVIEW')){
   const panel=plan.rules[b.model]?.panel;
   if(panel){const stage=panel==='OC'?'OC_VI':'LCM_VI';values[stage]=(values[stage]??0)+b.count;}
  }
  }
- return {result,values};
+ return {result,values,unrouted};
 }
 export function workload(opening:Values|undefined,forecast:Values|undefined,cof:number){
  const sum=(...parts:(number|undefined)[])=>parts.some(n=>n!==undefined)?parts.reduce<number>((total,n)=>total+(n??0),0):undefined;
@@ -208,8 +242,9 @@ export function attachProduction(base:Scenario,snapshot:RwSnapshot|undefined,pla
  if(forecast&&plan){
   const rules:Record<string,ModelRule>=Object.create(null);
   for(const b of forecast.result.batches)rules[b.model]=plan.rules[b.model]??{};
-  if(mode==='MNT'&&forecast.result.batches.some(b=>b.kind==='REVIEW'&&!rules[b.model]?.panel)){
-   s.productionBlock='MNT 生产计划缺少 NDF 型号的 OC / LCM 路线，请在导入预览中确认';
+  if(forecast.unrouted.length){
+   const details=forecast.unrouted.slice(0,4).map(b=>b.model+'（'+b.count+' 片）').join('、');
+   s.productionBlock='MNT '+(shift==='DAY'?'白班':'夜班')+' NDF 型号无法判定 OC / LCM：'+details+'；BAB 前缀、第 10 位、第 8 位均未命中';
   }else s.lots.push(...forecastLots(forecast.result,mode,rules,demoArrival,true).map((lot,i)=>{
    const rule=rules[forecast.result.batches[i].model];
    return {...lot,cof:s.cofPerPiece??2,...(lot.kind==='POL'?{cut:rule.cut,black:rule.polBlack}:{})};

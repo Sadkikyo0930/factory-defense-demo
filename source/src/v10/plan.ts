@@ -2,7 +2,7 @@ import {demoScenario, type Kind,type Lot,type Mode,type Scenario,type Step} from
 export type Shift='DAY'|'NIGHT';
 type NgKind=Exclude<Kind,'UNKNOWN'>;
 export const ngKinds=['POL','BD','REVIEW','FILM'] as const;
-export interface PlanRecord {date:string;rawModel:string;day:number;night:number;source:string}
+export interface PlanRecord {date:string;rawModel:string;day:number;night:number;source:string;expected?:Record<Shift,Record<NgKind,number>>}
 export interface NormalizedPlan extends PlanRecord {model:string;size?:number;bu?:Mode;valid:boolean;reason?:string}
 export interface NgRateTable {version:string;percent:Record<number,readonly [number,number,number,number]>}
 export const ngRates:NgRateTable={version:'ng-size-v1',percent:{
@@ -23,22 +23,31 @@ export function normalizePlan(row:PlanRecord):NormalizedPlan{
  return {...row,model,size,bu,valid:!reason,reason};
 }
 export interface ForecastBatch {kind:NgKind;model:string;count:number;expected:number}
+export function classifyMntPanel(model:string):ModelRule['panel']{
+ if(model.startsWith('BAB'))return 'OC';
+ if(model[9]==='B')return 'OC';
+ if(model[9]==='M')return 'LCM';
+ if(['B','D','3'].includes(model[7]))return 'OC';
+ if(['M','1'].includes(model[7]))return 'LCM';
+}
 export function forecastPlan(rows:PlanRecord[],date:string,bu:Mode,shift:Shift,table=ngRates){
  if(!validPlanDate(date))throw Error('计划日期无效');
- const models=new Map<string,{size:number;quantity:number}>();
+ const models=new Map<string,Record<NgKind,number>>();
  const rejected:NormalizedPlan[]=[];let plan=0;
  for(const raw of rows){
   if(raw.date!==date)continue;const r=normalizePlan(raw);
   if(!r.valid){rejected.push(r);continue;}if(r.bu!==bu)continue;
   const quantity=shift==='DAY'?r.day:r.night;if(!quantity)continue;
-  if(!table.percent[r.size!])throw Error('未配置尺寸 NG 率：'+r.size);
-  const total=(models.get(r.model)?.quantity??0)+quantity;plan+=quantity;
+  if(!r.expected&&!table.percent[r.size!])throw Error('未配置尺寸 NG 率：'+r.size);
+  plan+=quantity;
   if(!Number.isSafeInteger(plan))throw Error('计划量超出可计算范围');
-  models.set(r.model,{size:r.size!,quantity:total});
+  const total=models.get(r.model)??{POL:0,BD:0,REVIEW:0,FILM:0};
+  ngKinds.forEach((kind,i)=>{total[kind]+=r.expected?.[shift][kind]??quantity*table.percent[r.size!][i]/100;});
+  models.set(r.model,total);
  }
  const batches:ForecastBatch[]=[],diagnostic={} as Record<NgKind,{expected:number;count:number;roundingDelta:number}>;
- for(const [i,kind] of ngKinds.entries()){
-  const parts=[...models].map(([model,m])=>({model,kind,expected:m.quantity*(table.percent[m.size][i]/100)}));
+ for(const kind of ngKinds){
+  const parts=[...models].map(([model,m])=>({model,kind,expected:m[kind]}));
   const expected=parts.reduce((sum,p)=>sum+p.expected,0),count=Math.round(expected);
   diagnostic[kind]={expected,count,roundingDelta:count-expected};
   // Allocate the rounded total to model routes using largest remainders, then stable model order.
