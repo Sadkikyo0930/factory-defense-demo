@@ -172,9 +172,9 @@ try{
  await page.waitForFunction(()=>window.v10Scene?.ready);
  await page.locator('#import-report').click();
  assert.equal((await cells('TV','BD'))[3],'未导入');
- assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.5');
- assert.match(await page.title(),/V1\.0-rw38\.5/);
- assert.equal(await page.locator('header .brand em').innerText(),'V1.0-rw38.5');
+ assert.equal(await page.locator('#data-version').innerText(),'V1.0-rw38.6');
+ assert.match(await page.title(),/V1\.0-rw38\.6/);
+ assert.equal(await page.locator('header .brand em').innerText(),'V1.0-rw38.6');
  const jobs=[
   ['REMOVE','祛除'],['TAPE','贴胶'],['BD','BD'],['UV','UV'],['PEEL','撕 POL'],['POL','贴 POL'],
   ['BLACK','黑胶'],['FILM','贴膜'],['PI','PI'],['OUT','OUT']
@@ -323,7 +323,7 @@ try{
  const mockRows=[
   [49,'TV祛除','TV',12,123],[51,'MNT祛除','MNT',31,133],[53,'TV BD','TV',34,140],[55,'MNT BD','MNT',56,150],
   [57,'TV UV','TV',5,8],[59,'MNT UV','MNT',8,10],[61,'TV POL','TV',22,30],[63,'MNT POL','MNT',45,55],
-  [65,'MNT切割','MNT',4,3],[67,'TV贴膜','TV',2,1],[69,'MNT贴膜','MNT',3,2],
+  [85,'MNT切割','MNT',4,3],[67,'TV贴膜','TV',2,1],[69,'MNT贴膜','MNT',3,2],
   [71,'TV PI','TV',6,5],[73,'MNT PI','MNT',8,7],[75,'黑胶','SHARED',55,65],[77,'TV VI','TV',17,10],
   [79,'TV OUT','TV',3,2],[81,'MNT OC','MNT',77,45],[83,'MNT模组','MNT',31,70],
   [87,'MNT OC','MNT',24,9],[89,'MNT模组','MNT',6,19]
@@ -341,6 +341,10 @@ try{
   return {date,source:{tool:'rw-win7-vbs'},rows:metric(12),targetBaseline:{version:1,rows:metric(11)},productionPlan};
  };
  await page.locator('#import-report').click();
+ const readMatrix=async()=>Object.fromEntries(await Promise.all(Object.entries(expectedOpening).map(async ([group,stages])=>
+  [group,Object.fromEntries(await Promise.all(Object.keys(stages).map(async stage=>[stage,await cells(group,stage)])))]
+ )));
+ const inkTarget=Number(process.env.FACTORY_TEST_INK_TARGET??37);
  for(const withArea of [false,true]){
   const reportRows=withArea?mockRows:mockRows.flatMap(r=>r.group!=='SHARED'?[r]:['TV','MNT'].map(group=>({
    ...r,group,name:group+'黑胶',sourceName:'黑胶',allocation:'blackGlue-20-80',
@@ -353,7 +357,27 @@ try{
    assert.ok(row[4].startsWith(cof?'总计 '+total+cof:total+' 片次'),group+' '+stage+' total: '+row[4]);
   }
   await page.locator('#data-confirm').click();
+  assert.equal(await page.locator('#data-pending').isVisible(),false);
+  assert.equal(await page.locator('#data-error').innerText(),'已确认导入。');
+  const clean=await state(),cleanMatrix=await readMatrix();
+  const withInk=matrixPayload(withArea,[...reportRows,{row:65,name:'INK',today:0,target:inkTarget}]);
+  await file('production-json',withInk);
+  assert.doesNotMatch(await page.locator('#data-tables').innerText(),/未映射.*INK/);
+  assert.deepEqual(await readMatrix(),cleanMatrix);
+  await page.locator('#data-confirm').click();
+  assert.equal(await page.locator('#data-pending').isVisible(),false);
+  assert.equal(await page.locator('#data-error').innerText(),'已确认导入。');
+  assert.deepEqual(await state(),clean);
+  assert.deepEqual(await readMatrix(),cleanMatrix);
  }
+ const withUnknown=matrixPayload(true);
+ withUnknown.targetBaseline.rows.push({name:'INK维修',group:'TV',target:1});
+ const prior=await state();
+ await file('production-json',withUnknown);
+ await page.locator('#data-confirm').click();
+ assert.match(await page.locator('#data-error').innerText(),/未映射/);
+ assert.deepEqual(await state(),prior);
+ await page.locator('#data-discard').click();
  const openingTotal=s=>s.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0);
  assert.equal(openingTotal(await state()),337); // Includes the MNT share of shared black glue.
  assert.equal(forecastTotal(await state()),1744);
@@ -406,6 +430,7 @@ try{
  assert.equal(await page.locator('#cof').inputValue(),'3');
  await page.locator('#close-task').click();
  console.log('PASS rw38.5 full TV/MNT matrix in both formats, POL split, COF defaults and saved shift scope, no duplicate physical inventory');
+ console.log('PASS rw38.6 INK excluded from both metrics, confirm succeeds for old and new formats, all legal workload cells and task state unchanged');
  console.log('PASS rw38.3 legacy layout and mergeArea imports, exact WIP/target reconciliation, auto NDF routing, shift isolation, and atomic rollback');
  assert.deepEqual(errors,[]);console.log('PASS V3.8-shaped import, atomic rollback, fresh targets, scoped jobs, NDF routing, independent COF, derived bubble WIP and physical conservation');
 }finally{await browser.close();await new Promise(r=>server.close(r));}
