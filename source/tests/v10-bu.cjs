@@ -3,6 +3,7 @@ const cache={};function load(name){if(cache[name])return cache[name];const m={ex
  const text=fs.readFileSync(path.join(__dirname,'../src/v10',name+'.ts'),'utf8');
  new Function('exports','require','module',ts.transpileModule(text,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2019}}).outputText)(m.exports,n=>load(n.slice(2)),m);return m.exports;}
 const P=load('plan'),S=load('spec'),E=load('engine');
+for(const [model,panel] of Object.entries({BAB238AAMM:'OC',AB238AAM2B:'OC',AB238AA31M:'LCM',AB238AAB:'OC',AB238AAD:'OC',AB238AA3:'OC',AB238AAM:'LCM',AB238AA1:'LCM',AB238AAA1:undefined}))assert.equal(P.classifyMntPanel(model),panel,model);
 const date='20261119', row=(rawModel,day=300,night=100,dateValue=date)=>({date:dateValue,rawModel,day,night,source:'SYNTHETIC'});
 assert.equal(P.normalizePlan(row('AB315AAA1 → AB238AAA1')).bu,'TV');
 assert.equal(P.normalizePlan(row('AB340AAA1')).bu,'TV');
