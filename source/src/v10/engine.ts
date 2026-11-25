@@ -4,8 +4,8 @@ export interface TraceEvent {time:number;stage:Step;kind:Kind;count:number;faile
 /** Read-only presentation journal. Never used for dispatch, yield, accounting or scoring. */
 export interface VisualService {lotId:string;first:number;count:number;stage:Step;start:number;end:number;resource:string;}
 export interface VisualTerminal {lotId:string;first:number;count:number;outcome:'success'|'failure'|'wip';stage:Step;}
-interface Parcel {lot:number;first:number;count:number;step:number;queued:number;}
-interface Resource {id:string;stage:Step;end:number;active:Parcel[];actual?:Step;started:number;}
+interface Parcel {lot:number;first:number;count:number;step:number;queued:number;remainingSeconds?:number;}
+interface Resource {id:string;stage:Step;end:number;active:Parcel[];actual?:Step;started:number;remainingSeconds?:number;}
 export interface Simulation {ledger:Record<Step,Ledger>;successfulOut:number;failurePool:number;input:number;forecastInput:number;opening:number;closing:number;unreleased:number;total:number;outByKind:Record<Kind,number>;failedByKind:Record<Kind,number>;timeline:TraceEvent[];batches:{start:number;end:number;count:number;modes:string[]}[];conservation:boolean;identityConservation:boolean;resourceBusy:Record<string,number>;maxActive:number;checks:number;visual:{services:VisualService[];terminal:VisualTerminal[]};}
 export function identitySuccess(seed:string,lotId:string,ordinal:number,probability:number,attempt=1){let hash=2166136261;const text=seed+'|'+lotId+'|'+ordinal+'|'+attempt;for(let i=0;i<text.length;i++){hash^=text.charCodeAt(i);hash=Math.imul(hash,16777619);}hash^=hash>>>16;hash=Math.imul(hash,0x7feb352d);hash^=hash>>>15;return (hash>>>0)/4294967296<probability;}
 export function canDamage(expected:Step,attack:Step){return expected===attack||(expected==='OUT'&&['VI','OC_VI','LCM_VI'].includes(attack));}
@@ -23,7 +23,7 @@ export function simulate(s:Scenario,f:Formation):Simulation {
  const eligible=(stage:Step,p:Parcel,operator?:Step)=>stage==='BUBBLE'||(s.lots[p.lot].mode===(s.mode??(stage==='CUT'?'MNT':'TV'))&&(stage!=='OUT'||inspectionStage(s.lots[p.lot])===operator));
  const hasWork=(stage:Step,operator?:Step)=>queues[stage].some(p=>eligible(stage,p,operator));
  function take(stage:Step,max=1,operator?:Step){const picked:Parcel[]=[];let count=0,index=0;while(count<max&&(index=queues[stage].findIndex(p=>eligible(stage,p,operator)))>=0){const p=queues[stage][index],n=Math.min(max-count,p.count);picked.push({...p,count:n});p.first+=n;p.count-=n;count+=n;if(!p.count)queues[stage].splice(index,1);}return picked;}
- function finish(r:Resource){const step=r.actual!;let failure=0;for(const p of r.active){const l=s.lots[p.lot];ledger[step].processed+=p.count;if(step==='TAPE')ledger[step].cof+=p.count*tapeCof(l);
+ function finish(r:Resource){const step=r.actual!;let failure=0;for(const p of r.active){delete p.remainingSeconds;const l=s.lots[p.lot];ledger[step].processed+=p.count;if(step==='TAPE')ledger[step].cof+=p.count*tapeCof(l);
    if(step==='OUT'){outByKind[l.kind]+=p.count;exits.push(p);continue;}
    if(['VI','OC_VI','LCM_VI'].includes(step)&&(l.kind==='BD'||l.kind==='POL'||l.kind==='FILM'||l.kind==='REVIEW')){
     // Individual decisions only for actually processed sheets, never for million-sheet backlog.
@@ -36,14 +36,20 @@ export function simulate(s:Scenario,f:Formation):Simulation {
   const group=resources.filter(r=>r.stage===stage);if(!group.length)continue;const start=roundRobin[stage]||0;
   for(let offset=0;offset<group.length;offset++){const ix=(start+offset)%group.length,r=group[ix];if(r.active.length||s.disabled.includes(r.id)||time>=Math.min(s.duration,(s.workHours?.[r.id]??10)*3600))continue;
    const actual=(stage==='VI'||stage==='OC_VI'||stage==='LCM_VI')&&hasWork('OUT',stage)?'OUT':stage; // Ship checked stock using the same lane and finite operator time.
-   if(!hasWork(actual,stage))continue;const batch=take(actual,stage==='BUBBLE'?8:1,stage);r.active=batch;r.actual=actual;r.started=time;const duration=serviceTime(actual,s.lots[batch[0].lot]);r.end=time+duration;const until=Math.min(s.duration,(s.workHours?.[r.id]??10)*3600);if((s.workHours?.[r.id]??10)<10&&r.end>until+1e-8)r.end=s.duration+1;
+   if(!hasWork(actual,stage))continue;const batch=take(actual,stage==='BUBBLE'?8:1,stage);r.active=batch;r.actual=actual;r.started=time;const duration=batch[0].remainingSeconds??serviceTime(actual,s.lots[batch[0].lot]);r.end=time+duration;r.remainingSeconds=0;const until=Math.min(s.duration,(s.workHours?.[r.id]??10)*3600);if((s.workHours?.[r.id]??10)<10&&r.end>until+1e-8){r.remainingSeconds=r.end-until;r.end=until;}
    const busy=Math.min(duration,Math.min(s.duration,(s.workHours?.[r.id]??10)*3600)-time);resourceBusy[r.id]=(resourceBusy[r.id]||0)+busy;ledger[actual].busySeconds+=busy;
    for(const p of batch)visualServices.push({lotId:s.lots[p.lot].id,first:p.first,count:p.count,stage:actual,start:time,end:r.end,resource:r.id});
    roundRobin[stage]=(ix+1)%group.length;if(stage==='BUBBLE')batches.push({start:time,end:r.end,count:batch.reduce((n,p)=>n+p.count,0),modes:[...new Set(batch.map(p=>s.lots[p.lot].mode))]});
   }
  }}
  while(time<=s.duration){if(++checks>200000)throw Error('事件预算超限，未生成可审计成绩');
-  for(const r of resources)if(r.active.length&&r.end<=time+1e-8)finish(r);
+  for(const r of resources)if(r.active.length&&r.end<=time+1e-8){
+   if((r.remainingSeconds??0)>1e-8){
+    // Same-stage handover keeps identity and accrued work. No upstream/processed counts yet.
+    for(const p of r.active)queues[r.actual!].unshift({...p,remainingSeconds:r.remainingSeconds,queued:time});
+    r.active=[];r.end=Infinity;r.remainingSeconds=0;
+   }else finish(r);
+  }
   while(arrival<arrivals.length&&arrivals[arrival].at<=time+1e-8){const i=arrivals[arrival++].i,l=s.lots[i];if(l.count)enqueue({lot:i,first:0,count:l.count,step:0,queued:time},l.source);}
   if(time>=s.duration)break;dispatch();maxActive=Math.max(maxActive,resources.reduce((n,r)=>n+r.active.reduce((a,p)=>a+p.count,0),0));
   const next=Math.min(s.duration,arrivals[arrival]?.at??Infinity,...resources.filter(r=>r.active.length).map(r=>r.end));// Service durations are fractional. A strictly later event must progress even when the gap is below an arbitrary epsilon.
