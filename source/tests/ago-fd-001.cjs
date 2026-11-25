@@ -22,6 +22,11 @@ const rec=(id,bu='TV',shift='DAY')=>({id,player:'合成班长',completedAt:'2026
  location.hostname='localhost';global.fetch=async()=>({ok:true,headers:{get:()=> 'application/json'},json:async()=>({saved:true,records:[rec('old-shared')]})});
  assert.equal((await repo.query({})).length,5);await repo.save(rec('shared'));assert.equal((await repo.query({})).length,6);console.log('PASS existing shared records merged without local loss');
  global.fetch=async()=>{throw Error('offline')};assert.equal((await repo.query({})).length,5);console.log('PASS network failure preserves local queries');
+ for(const bodyHangs of [false,true]){
+  let signal;global.fetch=async(url,options)=>{signal=options.signal;return bodyHangs?{ok:true,headers:{get:()=> 'application/json'},json:()=>new Promise(()=>{})}:new Promise(()=>{});};
+  const start=Date.now();await repo.save(rec('hang-'+bodyHangs));assert.ok(Date.now()-start<2500);assert.ok(signal.aborted);
+  const queryStart=Date.now();const rows=await repo.query({});assert.ok(Date.now()-queryStart<2500);assert.ok(rows.some(r=>r.id==='hang-'+bodyHangs));assert.ok(signal.aborted);
+ }console.log('PASS hanging fetch AND hanging JSON body bounded; local save/history survive');
  const combat=fs.readFileSync('src/v10/CombatView.ts','utf8');assert.ok(!/hpFrame|enemy\.hp\.|e\.hp\.|hp:Phaser/.test(combat));
  assert.ok(combat.includes('hp:102*squadState'));console.log('PASS no health bar objects; debug health retained');
 })().catch(e=>{console.error(e);process.exitCode=1});

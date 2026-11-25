@@ -42,9 +42,15 @@ export function scoreRepository():ScoreRepository{
  }
  async function request(query:string,record?:ScoreRecord){
   if(/\.github\.io$/i.test(location.hostname))throw Error('GitHub Pages 试玩没有私有成绩服务');
-  const res=await fetch('/api/scores'+query,{credentials:'same-origin',cache:'no-store',...(record?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)}:{})});
-  if(!res.ok||!res.headers.get('content-type')?.includes('application/json'))throw Error('共享成绩库不可用或未授权');
-  return await res.json();
+  const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   return await Promise.race([
+    (async()=>{const res=await fetch('/api/scores'+query,{signal:controller.signal,credentials:'same-origin',cache:'no-store',...(record?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)}:{})});
+     if(!res.ok||!res.headers.get('content-type')?.includes('application/json'))throw Error('共享成绩库不可用或未授权');
+     return await res.json();})(),
+    new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error('共享成绩库请求超时'));},1500);})
+   ]);
+  }finally{clearTimeout(timer);}
  }
  return {
   async save(record){
@@ -63,3 +69,4 @@ export function scoreRepository():ScoreRepository{
   }
  };
 }
+
