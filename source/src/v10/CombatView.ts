@@ -6,7 +6,7 @@ import {CombatEffects} from './CombatEffects';
 const army:Record<string,[number,number]>={REMOVE:[100,210],TAPE:[275,210],BD:[450,210],UV:[100,410],PEEL:[275,410],POL:[450,410],BUBBLE:[100,610],BLACK:[275,610],FILM:[450,610],PI:[190,805],VI:[395,805]};
 const names:Record<Kind,string>={BD:'BD 装甲怪',POL:'POL 薄膜怪',FILM:'覆膜怪',REVIEW:'过判幻影',UNKNOWN:'未分型待检'};
 interface Actor {stage:Step;body:Phaser.GameObjects.Container;sprites:Map<string,{sprite:Phaser.GameObjects.Sprite;x:number;scale:number}>;operator?:Phaser.GameObjects.Image;}
-interface Enemy {squad:Squad;root:Phaser.GameObjects.Container;body:Phaser.GameObjects.Image;hp:Phaser.GameObjects.Rectangle;hpFrame:Phaser.GameObjects.Rectangle;name:Phaser.GameObjects.Text;stageLabel:Phaser.GameObjects.Text;shadow:Phaser.GameObjects.Ellipse;shield:Phaser.GameObjects.Ellipse;x:number;y:number;lastHit:number;}
+interface Enemy {squad:Squad;root:Phaser.GameObjects.Container;body:Phaser.GameObjects.Image;name:Phaser.GameObjects.Text;stageLabel:Phaser.GameObjects.Text;shadow:Phaser.GameObjects.Ellipse;shield:Phaser.GameObjects.Ellipse;x:number;y:number;lastHit:number;}
 interface Burst {stage:Step;x:number;y:number;at:number;shield:boolean;}
 export class CombatView {
  root:Phaser.GameObjects.Container;actors=new Map<Step,Actor>();enemies:Enemy[]=[];fx:CombatEffects;gfx:Phaser.GameObjects.Graphics;
@@ -57,8 +57,8 @@ export class CombatView {
    this.root.add(group);
    this.actors.set(stage,{stage,body:group,sprites,operator});
   }
-  for(const squad of projectBattle(this.session.scenario,this.session.result!.simulation)){if(squad.beats.some(beat=>!hasOperator(beat,this.session.scenario,this.session.formation)))throw Error('动画记录与岗位可用性不一致');const root=s.add.container(),frame=squad.kind==='UNKNOWN'?'REVIEW':squad.kind,body=s.add.image(0,0,'v10-monsters',frame);body.setScale(137/body.width);const shadow=s.add.ellipse(0,55,104,19,0x030d1d,.65),shield=s.add.ellipse(0,-3,127,126,0x8de9ff,.06).setStrokeStyle(2,0xb9ebff,.4),name=this.text(0,-108,names[squad.kind],18),stageLabel=this.text(0,-87,displayStage(squad.initialStage,this.session.scenario),16),hpFrame=s.add.rectangle(0,-69,108,11,0x07152c,.94).setStrokeStyle(1,0x91b9cf,.8),hp=s.add.rectangle(-51,-69,102,7,colors[squad.initialStage]).setOrigin(0,.5);
-   root.add([shadow,shield,body,name,stageLabel,hpFrame,hp]);this.root.add(root);this.enemies.push({squad,root,body,shadow,shield,name,stageLabel,hpFrame,hp,x:1680,y:207+squad.lane*188,lastHit:-Infinity});
+  for(const squad of projectBattle(this.session.scenario,this.session.result!.simulation)){if(squad.beats.some(beat=>!hasOperator(beat,this.session.scenario,this.session.formation)))throw Error('动画记录与岗位可用性不一致');const root=s.add.container(),frame=squad.kind==='UNKNOWN'?'REVIEW':squad.kind,body=s.add.image(0,0,'v10-monsters',frame);body.setScale(137/body.width);const shadow=s.add.ellipse(0,55,104,19,0x030d1d,.65),shield=s.add.ellipse(0,-3,127,126,0x8de9ff,.06).setStrokeStyle(2,0xb9ebff,.4),name=this.text(0,-108,names[squad.kind],18),stageLabel=this.text(0,-87,displayStage(squad.initialStage,this.session.scenario),16);
+   root.add([shadow,shield,body,name,stageLabel]);this.root.add(root);this.enemies.push({squad,root,body,shadow,shield,name,stageLabel,x:1680,y:207+squad.lane*188,lastHit:-Infinity});
   }
   this.gfx=s.add.graphics();this.fx=new CombatEffects(this.gfx);this.root.add(this.gfx);this.root.setVisible(true);this.active=true;this.resize();this.render(0);
  }
@@ -72,7 +72,7 @@ export class CombatView {
    enemy.body.x=0;
    enemy.body.y=Math.sin(age*22)*4;
    enemy.body.angle=Math.sin(age*17)*4;
-   enemy.shadow.setScale(1+.03*Math.sin(age*8),1);enemy.shield.setAlpha(state.state==='advance'?.6:.25);enemy.stageLabel.setText(displayStage(state.stage,this.session.scenario));enemy.stageLabel.setColor('#'+colors[state.stage].toString(16).padStart(6,'0'));enemy.hp.setFillStyle(colors[state.stage]);enemy.hp.width=102*state.hp;
+   enemy.shadow.setScale(1+.03*Math.sin(age*8),1);enemy.shield.setAlpha(state.state==='advance'?.6:.25);enemy.stageLabel.setText(displayStage(state.stage,this.session.scenario));enemy.stageLabel.setColor('#'+colors[state.stage].toString(16).padStart(6,'0'));
    const beat=q.beats[state.beat];if(beat&&time>=beat.start&&time<=beat.end){const realStage=beat.stage,actor=this.actors.get(realStage==='OUT'?beat.resource.replace(/-\d+$/,'') as Step:realStage);if(actor){const stage=realStage==='OUT'?beat.resource.replace(/-\d+$/,'') as Step:realStage,p=(time-beat.start)/(beat.end-beat.start),key=q.id+':cast:'+state.beat;
      if(!this.marks.has(key)){this.marks.add(key);this.telemetry.casts.push({stage:realStage,squadId:q.id,resource:beat.resource,at:time});}stagePulse.set(beat.resource,Math.max(stagePulse.get(beat.resource)||0,Math.sin(Math.min(1,p/.5)*Math.PI)));
      this.fx.projectile(stage,{x:actor.body.x+(actor.sprites.get(beat.resource)?.x||0)+29,y:actor.body.y+4},{x:enemy.root.x,y:enemy.root.y-12},p,time);activeEffects++;
@@ -81,8 +81,8 @@ export class CombatView {
     }}
    for(let i=0;i<q.beats.length;i++){const b=q.beats[i],key=q.id+':shield:'+i;if(b.fraction===1&&time>=b.end&&!this.marks.has(key)){this.marks.add(key);this.telemetry.shields.push({stage:b.stage,squadId:q.id,at:time});this.bursts.push({stage:b.stage==='OUT'?'VI':b.stage,x:enemy.root.x,y:enemy.y-12,at:time,shield:true});}}
    if(state.state==='defeated'||state.state==='escape'||state.state==='waiting'&&time>=q.finish){const key=q.id+':outcome';if(!this.marks.has(key)){this.marks.add(key);this.telemetry.outcomes.push({squadId:q.id,outcome:q.outcome,at:time});}
-    const p=Phaser.Math.Clamp((time-q.finish)/.44,0,1);if(q.outcome==='success'){enemy.stageLabel.setText('维修完成');enemy.hpFrame.setVisible(false);enemy.hp.setVisible(false);enemy.root.setAlpha(1-p).setScale(1-p*.65);enemy.body.angle=p*28;enemy.body.y-=p*35;if(p<.4)this.fx.burst('BD',enemy.root.x,enemy.y,.38*p,true);}
-    else if(q.outcome==='failure'){enemy.stageLabel.setText('抵抗 · 待返修').setColor('#ffb49d');enemy.hp.setVisible(false);enemy.hpFrame.setVisible(false);enemy.shield.setAlpha(.8).setStrokeStyle(5,0xff9caa,.8);enemy.root.x+=p*560;enemy.root.setAlpha(1-p*.85);enemy.body.angle=-p*14;}
+    const p=Phaser.Math.Clamp((time-q.finish)/.44,0,1);if(q.outcome==='success'){enemy.stageLabel.setText('维修完成');enemy.root.setAlpha(1-p).setScale(1-p*.65);enemy.body.angle=p*28;enemy.body.y-=p*35;if(p<.4)this.fx.burst('BD',enemy.root.x,enemy.y,.38*p,true);}
+    else if(q.outcome==='failure'){enemy.stageLabel.setText('抵抗 · 待返修').setColor('#ffb49d');enemy.shield.setAlpha(.8).setStrokeStyle(5,0xff9caa,.8);enemy.root.x+=p*560;enemy.root.setAlpha(1-p*.85);enemy.body.angle=-p*14;}
     else{enemy.stageLabel.setText(displayStage(q.finalStage,this.session.scenario)+' · 仍在推进');enemy.root.x-=p*55;enemy.body.setTint(0x9cafc4);enemy.shield.setAlpha(.2);}
    }
   }
@@ -106,5 +106,5 @@ export class CombatView {
   }
   this.bursts=this.bursts.filter(b=>time-b.at<(b.shield?.48:.28)).slice(-18);for(const burst of this.bursts)this.fx.burst(burst.stage,burst.x,burst.y,time-burst.at,burst.shield);this.telemetry.maxActiveEffects=Math.max(this.telemetry.maxActiveEffects,activeEffects+this.bursts.length);
  }
- get debug(){return {time:this.time,casts:this.telemetry.casts.length,shields:this.telemetry.shields.length,activeShields:this.bursts.filter(b=>b.shield).length,freshShield:this.bursts.some(b=>b.shield&&this.time-b.at<.12),outcomes:this.telemetry.outcomes.length,texts:this.enemies.filter(e=>e.root.visible&&e.root.alpha>.05).flatMap(e=>[e.name.text,e.stageLabel.text]),enemies:this.enemies.map(e=>({id:e.squad.id,lotId:e.squad.lotId,ordinal:e.squad.ordinal,initialStage:e.squad.initialStage,kind:e.squad.kind,x:e.root.x,y:e.root.y,visible:e.root.visible,alpha:e.root.alpha,hp:e.hp.width,spawn:e.squad.spawn,lane:e.squad.lane,wave:e.squad.column,stage:e.stageLabel.text,outcome:e.squad.outcome,state:squadState(e.squad,this.time).state})),maxActiveEffects:this.telemetry.maxActiveEffects};}
+ get debug(){return {time:this.time,casts:this.telemetry.casts.length,shields:this.telemetry.shields.length,activeShields:this.bursts.filter(b=>b.shield).length,freshShield:this.bursts.some(b=>b.shield&&this.time-b.at<.12),outcomes:this.telemetry.outcomes.length,texts:this.enemies.filter(e=>e.root.visible&&e.root.alpha>.05).flatMap(e=>[e.name.text,e.stageLabel.text]),enemies:this.enemies.map(e=>({id:e.squad.id,lotId:e.squad.lotId,ordinal:e.squad.ordinal,initialStage:e.squad.initialStage,kind:e.squad.kind,x:e.root.x,y:e.root.y,visible:e.root.visible,alpha:e.root.alpha,hp:102*squadState(e.squad,this.time).hp,spawn:e.squad.spawn,lane:e.squad.lane,wave:e.squad.column,stage:e.stageLabel.text,outcome:e.squad.outcome,state:squadState(e.squad,this.time).state})),maxActiveEffects:this.telemetry.maxActiveEffects};}
 }

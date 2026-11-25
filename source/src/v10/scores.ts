@@ -26,7 +26,20 @@ export function makeScore(result:BattleResult,player:string,id:string):ScoreReco
  total:r.total,target:r.target,staff:r.staff,out:r.out,deployed:result.deployed,opening:result.simulation.opening,
  forecast:s.forecast?.amounts??{BD:0,POL:0,REVIEW:0,FILM:0},closing:result.simulation.closing,seed:s.seed,engine:'v10-bu-1'};
 }
+export const LOCAL_SCORES_KEY='factory-v10-scores-v1';
 export function scoreRepository():ScoreRepository{
+ function local():ScoreRecord[]{
+  const raw=localStorage.getItem(LOCAL_SCORES_KEY);
+  if(raw===null)return [];
+  const records=JSON.parse(raw);
+  if(!Array.isArray(records)||records.some(r=>!r||typeof r.id!=='string'||typeof r.player!=='string'||typeof r.completedAt!=='string'||!['TV','MNT'].includes(r.bu)||!['DAY','NIGHT'].includes(r.shift)||!['total','target','staff','out'].every(k=>typeof r[k]==='number'&&Number.isFinite(r[k]))))throw Error('本机历史记录格式异常；原数据未覆盖');
+  return records;
+ }
+ function store(record:ScoreRecord){
+  const records=local(),prior=records.find(r=>r.id===record.id);
+  if(prior){if(JSON.stringify(prior)!==JSON.stringify(record))throw Error('相同班次ID已有不同成绩');return;}
+  localStorage.setItem(LOCAL_SCORES_KEY,JSON.stringify([...records,record]));
+ }
  async function request(query:string,record?:ScoreRecord){
   if(/\.github\.io$/i.test(location.hostname))throw Error('GitHub Pages 试玩没有私有成绩服务');
   const res=await fetch('/api/scores'+query,{credentials:'same-origin',cache:'no-store',...(record?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(record)}:{})});
@@ -34,7 +47,19 @@ export function scoreRepository():ScoreRepository{
   return await res.json();
  }
  return {
-  async save(record){const reply=await request('',record);if(reply.saved!==true)throw Error('共享成绩库未确认保存');},
-  async query(filters){const query=new URLSearchParams();for(const [key,value] of Object.entries(filters))if(value)query.set(key,value);const reply=await request('?'+query.toString());if(!Array.isArray(reply.records))throw Error('共享成绩库返回异常');return reply.records;}
+  async save(record){
+   store(record);
+   // 本机先保存；共享服务仅尽力同步，不把断网当成本机保存失败。
+   try{const reply=await request('',record);if(reply.saved!==true)throw Error('共享成绩库未确认保存');}catch{/* 本机记录已持久保存 */}
+  },
+  async query(filters){
+   const records=new Map(local().map(r=>[r.id,r]));
+   const query=new URLSearchParams();for(const [key,value] of Object.entries(filters))if(value)query.set(key,value);
+   try{
+    const reply=await request('?'+query.toString());
+    if(Array.isArray(reply.records))for(const r of reply.records)if(!records.has(r.id))records.set(r.id,r);
+   }catch{/* 离线时仍可查询本机记录；不清空既有记录 */}
+   return [...records.values()].filter(r=>(!filters.player||r.player===filters.player)&&(!filters.bu||r.bu===filters.bu)&&(!filters.shift||r.shift===filters.shift)).sort((a,b)=>b.completedAt.localeCompare(a.completedAt));
+  }
  };
 }

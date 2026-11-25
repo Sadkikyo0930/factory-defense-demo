@@ -24,7 +24,7 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
  player.innerHTML='<form><h2>本次挑战姓名</h2><p>姓名用于记录，非认证身份。</p><label>姓名 <input id="challenge-player" maxlength="24" required></label><p id="player-error" role="alert"></p><button type="button" id="cancel-player">取消</button><button type="submit">确认开战</button></form>';
  document.body.append(player);
  const history=document.createElement('dialog');history.id='history-dialog';
- history.innerHTML='<h2>历史成绩</h2><p>各任务、日期及配置不同，成绩不构成同一排名。</p><form><label>姓名 <input id="score-name" maxlength="24"></label><label>BU <select id="score-bu"><option value="">全部</option><option>TV</option><option>MNT</option></select></label><label>班次 <select id="score-shift"><option value="">全部</option><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label><button>查询</button><button type="button" id="history-close">关闭</button></form><p id="history-status" role="status"></p><ol id="history-items"></ol>';
+ history.innerHTML='<h2>历史成绩</h2><p>本机成绩保存在当前浏览器，清理站点数据会丢失，换设备不会同步。共享库可用时一并查询。各任务、日期及配置不同，成绩不构成同一排名。</p><form><label>姓名 <input id="score-name" maxlength="24"></label><label>BU <select id="score-bu"><option value="">全部</option><option>TV</option><option>MNT</option></select></label><label>班次 <select id="score-shift"><option value="">全部</option><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label><button>查询</button><button type="button" id="history-close">关闭</button></form><p id="history-status" role="status"></p><ol id="history-items"></ol>';
  document.body.append(history);
  const status=document.createElement('p');status.id='score-save-status';status.setAttribute('role','status');
  $('battle-result').append(status);
@@ -41,14 +41,14 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
   }catch(err){active=undefined;$('player-error').textContent=err instanceof Error?err.message:String(err);}
  };
  async function historyLoad(){
-  const notice=$('history-status'),list=$('history-items');list.replaceChildren();notice.textContent='正在查询共享成绩库…';
+  const notice=$('history-status'),list=$('history-items');list.replaceChildren();notice.textContent='正在查询本机与共享成绩…';
   try{
    const raw=$<HTMLInputElement>('score-name').value.trim(),records=await repo.query({player:raw?playerName(raw):undefined,bu:$<HTMLSelectElement>('score-bu').value,shift:$<HTMLSelectElement>('score-shift').value});
    const aggregate=new Map<string,{count:number;best:number}>();
    for(const r of records){const group=aggregate.get(r.player)??{count:0,best:0};group.count++;group.best=Math.max(group.best,r.total);aggregate.set(r.player,group);}
    notice.textContent=records.length?'显示最近记录；次数与最高分按当前筛选返回的记录统计。':'暂无记录';
    for(const r of records){const li=document.createElement('li'),sum=aggregate.get(r.player)!;li.textContent=r.player+' · '+r.completedAt.slice(0,10)+' · '+r.bu+' '+(r.shift==='DAY'?'白班':'夜班')+' · '+r.total.toFixed(1)+' 分（WIP '+r.target.toFixed(1)+' / 布阵 '+r.staff.toFixed(1)+' / OUT '+r.out.toFixed(1)+'） · '+sum.count+' 次 / 最高 '+sum.best.toFixed(1)+(r.synthetic?' · SYNTHETIC':' · 待确认')+' · '+r.fingerprint;list.append(li);}
-  }catch{notice.textContent='无法查询共享成绩库，请确认服务已启动并获授权。';}
+  }catch{notice.textContent='无法读取本机历史；原数据未覆盖。';}
  }
  $('score-history').onclick=()=>{history.showModal();void historyLoad();};
  $('history-close').onclick=()=>history.close();
@@ -62,9 +62,9 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
   async finish(){
    if(!active||!session.result||session.phase!=='result'||saving||saved)return;
    if(!completed)completed=makeScore(session.result,active.player,active.id);
-   const record=completed;saving=true;status.textContent='正在保存到共享成绩库…';
-   try{await repo.save(record);if(completed===record){saved=true;status.textContent='已保存到共享成绩库。';}}
-   catch{if(completed===record)status.textContent='成绩尚未保存到共享成绩库。恢复服务后可再次点「查看战绩」重试。';}
+   const record=completed;saving=true;status.textContent='正在保存本机成绩…';
+   try{await repo.save(record);if(completed===record){saved=true;status.textContent='已保存到本机浏览器；共享库仅在可用时同步。';}}
+   catch{if(completed===record)status.textContent='本机成绩尚未保存（存储受限或记录异常）。恢复存储后可再次点「查看战绩」重试。';}
    finally{if(completed===record)saving=false;}
   }
  };

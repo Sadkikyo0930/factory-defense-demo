@@ -1,0 +1,27 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
+const src=fs.readFileSync('src/v10/scores.ts','utf8'),m={exports:{}};
+new Function('exports',ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText)(m.exports);
+const {scoreRepository,LOCAL_SCORES_KEY}=m.exports;
+let db=new Map();global.localStorage={getItem:k=>db.get(k)??null,setItem:(k,v)=>db.set(k,v)};
+global.location={hostname:'example.github.io'};global.fetch=async()=>{throw Error('offline')};
+const rec=(id,bu='TV',shift='DAY')=>({id,player:'合成班长',completedAt:'2026-11-25T01:00:00Z',bu,shift,total:80,target:40,staff:20,out:20,legacyExtra:'preserve'});
+(async()=>{
+ const repo=scoreRepository();
+ for(const bu of ['TV','MNT'])for(const shift of ['DAY','NIGHT'])await repo.save(rec(bu+shift,bu,shift));
+ assert.equal((await repo.query({})).length,4);console.log('PASS four BU/shift combinations saved');
+ await repo.save(rec('TVDAY'));assert.equal((await repo.query({})).length,4);
+ await assert.rejects(repo.save({...rec('TVDAY'),total:90}));console.log('PASS duplicate ID idempotency and conflict protection');
+ const reopened=scoreRepository();assert.equal((await reopened.query({bu:'MNT',shift:'NIGHT'})).length,1);
+ assert.equal((await reopened.query({player:'missing'})).length,0);console.log('PASS reopen/filter/history retention');
+ assert.equal((await reopened.query({}))[0].legacyExtra,'preserve');
+ const bytes=db.get(LOCAL_SCORES_KEY);db.set(LOCAL_SCORES_KEY,'broken');
+ await assert.rejects(repo.save(rec('new')));assert.equal(db.get(LOCAL_SCORES_KEY),'broken');
+ db.set(LOCAL_SCORES_KEY,bytes);console.log('PASS old record fields retained and malformed data never overwritten');
+ const setter=localStorage.setItem;localStorage.setItem=()=>{throw Error('quota')};await assert.rejects(repo.save(rec('quota')));localStorage.setItem=setter;
+ assert.equal((await repo.query({})).length,4);console.log('PASS storage failure reported without data loss');
+ location.hostname='localhost';global.fetch=async()=>({ok:true,headers:{get:()=> 'application/json'},json:async()=>({saved:true,records:[rec('old-shared')]})});
+ assert.equal((await repo.query({})).length,5);await repo.save(rec('shared'));assert.equal((await repo.query({})).length,6);console.log('PASS existing shared records merged without local loss');
+ global.fetch=async()=>{throw Error('offline')};assert.equal((await repo.query({})).length,5);console.log('PASS network failure preserves local queries');
+ const combat=fs.readFileSync('src/v10/CombatView.ts','utf8');assert.ok(!/hpFrame|enemy\.hp\.|e\.hp\.|hp:Phaser/.test(combat));
+ assert.ok(combat.includes('hp:102*squadState'));console.log('PASS no health bar objects; debug health retained');
+})().catch(e=>{console.error(e);process.exitCode=1});
