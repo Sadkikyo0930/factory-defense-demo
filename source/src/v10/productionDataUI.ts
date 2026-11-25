@@ -1,6 +1,7 @@
+import {mainlinePlan} from './mainlinePlan';
 import type {BattleSession} from './session';
 import {attachProduction,projected,readProductionImport,taskRatios,workload,type ProductionImport,type RwPlan,type RwSnapshot} from './productionData';
-import {shiftScenario,validPlanDate,type Shift} from './plan';
+import {shiftScenario,validPlanDate,normalizePlan,type Shift} from './plan';
 import {clone,defaultCofPerPiece,stageLabel,visibleTowers,webVersion,splitPolRatios,type Mode,type PolRatios,type Scenario} from './spec';
 
 
@@ -10,7 +11,7 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
  <div class="data-controls"><button id="pick-production">导入今日生产任务</button>
  <label>日期 <input type="date" id="data-date"></label><label>班次 <select id="data-shift"><option value="DAY">白班</option><option value="NIGHT">夜班</option></select></label></div>
  <input type="file" id="production-json" accept=".json,application/json" hidden>
- <p id="data-summary"></p><p>预计新增工作量按维修路线逐站统计，每站独立计次。期初 WIP 来自日报，实际 NG 与实际 OUT 以生产结果为准。FA、Disa 不进入任务。</p>
+ <p id="data-summary"></p><p>仅展示主线排产型号及数量；后台岗位数据与计算保持。</p>
  <section id="data-conditions" hidden><h3>开战前确认</h3>
  <label id="data-confirm-in-field"><input type="checkbox" id="data-confirm-in"> 确认已有独立新增 IN 口径（没有则保持 0；不会生成新增量）</label>
  <button id="data-confirm-conditions">确认开战条件</button></section>
@@ -60,51 +61,12 @@ export function setupDataCenter(session:BattleSession,changed:()=>void){
   const shownTargets=dateMatched&&rw?rw.targets:{TV:{},MNT:{}};
   $('data-summary').textContent='期初快照：'+(rw?.date??'未导入')+(rw&&!dateMatched?'（与所选日期不同）':'')+' ｜ 目标快照：'+(rw&&(Object.keys(rw.targets.TV).length||Object.keys(rw.targets.MNT).length)?rw.date:'未导入')+' ｜ 生产计划：'+(p?(draft?.plan?draft.file:planFile)+'（按日期核对）':'未导入')+' ｜ 日报来源：'+(rw?(draft?.rw?draft.file:reportFile):'未导入')+' ｜ 班次：'+(selectedShift()==='DAY'?'白班':'夜班')+(session.scenario.productionBlock?' ｜ '+session.scenario.productionBlock:'');
   for(const mode of ['TV','MNT'] as const){
-   const settingsKey=cofKey(mode,selectedShift(),dateKey);
-   const ratios=taskRatios(p,mode,selectedShift(),savedRatios(settingsKey));
-   let forecast:ReturnType<typeof projected>;try{forecast=projected(p,dateKey,mode,selectedShift(),ratios);}catch(e){error(e);}
-   const scenario=shiftScenario(mode,selectedShift(),dateKey||'20261120');
    const column=document.createElement('section');column.className='data-bu';
-   const heading=document.createElement('h3');heading.textContent=mode+' · 班次计划 '+(forecast?.result.plan??'未导入');column.append(heading);
-   if(forecast){
-    const note=document.createElement('p');
-    const d=forecast.result.diagnostic;
-    note.textContent='预计 NG：BD '+d.BD.count+' / POL '+d.POL.count+' / 过判 '+d.REVIEW.count+' / 膜 '+d.FILM.count;
-    if(forecast.result.rejected.length)note.textContent+='；'+forecast.result.rejected.length+' 条计划记录未参与（型号规则或尺寸范围）';
-    if(forecast.unrouted.length){
-     const unresolved=forecast.unrouted.reduce((sum,b)=>sum+b.count,0);
-     note.textContent+='；未分配 '+unresolved+' 片：'+forecast.unrouted.slice(0,4).map(b=>b.model).join('、')+'（型号规则未命中）';
-    }
-    column.append(note);
-   }
-   const table=document.createElement('table');table.dataset.bu=mode;
-   table.innerHTML='<thead><tr><th>岗位</th><th>期初 WIP</th><th>预计新增工作量</th><th>目标期末 WIP</th><th>总工作量／说明</th></tr></thead>';
-   const rows=table.createTBody();
-   for(const stage of visibleTowers(scenario)){
-    const row=rows.insertRow();row.dataset.stage=stage;
-    const op=dateMatched?rw?.opening[mode]:undefined,cof=savedCof(settingsKey),w=workload(op,forecast?.values,cof),split=forecast?.inspections[stage];
-    const summary=dateMatched&&rw?.polSummary.has(mode);
-    const added=forecast?(forecast.values[stage]??0):undefined;
-    const estimated=stage==='TAPE'?(w.tapeAdded===undefined?undefined:w.tapeAdded+' COF'):added;
-    const showOut=stage==='VI'||stage==='OC_VI';
-    const outOpening=showOut&&op?.OUT!==undefined?'待 OUT '+op.OUT:undefined;
-    const outTarget=showOut&&shownTargets[mode].OUT!==undefined?'待 OUT '+shownTargets[mode].OUT:undefined;
-    const opening=stage==='BUBBLE'?w.bubbleOpening:op?.[stage];
-    const target=stage==='BUBBLE'||stage==='TAPE'?0:shownTargets[mode]?.[stage];
-    const ordinary=opening===undefined&&added===undefined&&!outOpening?undefined:(opening??0)+(added??0)+(outOpening?op!.OUT!:0);
-    const missing=[opening===undefined?'期初未导入':'',added===undefined?'预测未导入':''].filter(Boolean).join('，');
-    const detail=stage==='TAPE'?(w.tape===undefined?'未导入':'总计 '+w.tape+' COF（期初祛除 '+(op?.REMOVE??'未导入')+'、BD '+(op?.BD??'未导入')+'；'+cof+'/片'+(forecast?'':'；预测未导入')+'）'+(op?.TAPE?'；另有独立贴胶库存 '+op.TAPE+' 片':'')):
-     stage==='BUBBLE'?(w.bubble===undefined?'未导入':w.bubble+' 片次（期初撕 '+(op?.PEEL??'未导入')+'、贴 '+(op?.POL??'未导入')+
-      (forecast?'；新增撕 '+(forecast.values.PEEL??0)+'、贴 '+(forecast.values.POL??0):'；预测未导入')+
-      (summary?'；期初汇总按 20%／80% 分配':'')+'）'):
-     ordinary===undefined?'未导入':ordinary+' 片次'+(missing?'（'+missing+'）':'')+
-      (split?'；NDF '+split.ndf+' / 维修后 '+split.repair+'；实际 OUT 见结算':'')+
-      (stage==='BLACK'||stage==='CUT'?'（撕、贴新增合计 × '+Math.round(ratios[stage==='BLACK'?'blackRatio':'cutRatio']*10000)/100+'%）':'')+
-      (summary&&(stage==='PEEL'||stage==='POL')?'（期初汇总按 20%／80% 分配）':'');
-    const openingText=stage==='TAPE'?(w.tapeOpening===undefined?undefined:w.tapeOpening+' COF'):outOpening?'待检 '+(opening??'未导入')+' / '+outOpening:opening;
-    const v=[stageLabel(stage,scenario),openingText,estimated,outTarget?'待检 '+(target??'未导入')+' / '+outTarget:target,detail];
-    for(const cell of v)row.insertCell().textContent=String(cell??'未导入');
-   }
+   const heading=document.createElement('h3');heading.textContent=mode+' · 主线排产';column.append(heading);
+   const table=document.createElement('table');table.dataset.bu=mode;table.innerHTML='<thead><tr><th>型号</th><th>排产数量</th></tr></thead>';const bodyRows=table.createTBody();
+   const quantities=mainlinePlan(p?.records??[],dateKey,mode,selectedShift());
+   for(const {model,quantity} of quantities){const row=bodyRows.insertRow();row.insertCell().textContent=model;row.insertCell().textContent=String(quantity);}
+   if(!quantities.length){const note=document.createElement('p');note.textContent=p?'所选日期/班次没有可用型号排产':'未导入主线排产字段；不以岗位维修量代替';column.append(note);}
    column.append(table);body.append(column);
   }
   if(rw?.warnings.length){const note=document.createElement('p');note.textContent=rw.warnings.join('；');body.append(note);}

@@ -57,7 +57,7 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
   begin(start:()=>boolean){run=start;$('player-error').textContent='';player.showModal();},
   update(){
    bar.hidden=session.phase!=='setup';const s=session.scenario; if(s.mode)$<HTMLSelectElement>('bu-mode').value=s.mode;if(s.shift)$<HTMLSelectElement>('work-shift').value=s.shift;if(s.date)date.value=s.date.replace(/^(....)(..)(..)$/,'$1-$2-$3');const data=s.forecast;
-   $('ng-summary').textContent=data?(s.synthetic?'SYNTHETIC':'已导入计划 · 预测')+' · 当班计划 '+data.plan+' · BD '+data.amounts.BD+' · POL '+data.amounts.POL+' · 过判 '+data.amounts.REVIEW+' · 膜 '+data.amounts.FILM+'（各类可能重叠）':'未载入预计 NG 演练；当前可使用既有 TV 情景。';
+   $('ng-summary').hidden=!s.synthetic;$('ng-summary').textContent=data?(s.synthetic?'SYNTHETIC':'已导入计划 · 预测')+' · 当班计划 '+data.plan+' · BD '+data.amounts.BD+' · POL '+data.amounts.POL+' · 过判 '+data.amounts.REVIEW+' · 膜 '+data.amounts.FILM+'（各类可能重叠）':'未载入预计 NG 演练；当前可使用既有 TV 情景。';
   },
   async finish(){
    if(!active||!session.result||session.phase!=='result'||saving||saved)return;
@@ -69,3 +69,4 @@ export function setupModeUI(session:BattleSession,refresh:()=>void,say:(e:unknow
   }
  };
 }
+

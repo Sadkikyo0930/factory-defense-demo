@@ -14,7 +14,7 @@ export const slots:Record<Step,number>={REMOVE:3,TAPE:1,BD:2,UV:1,PEEL:1,POL:2,B
 export interface Lot {id:string;kind:Kind;mode:Mode;stage:Step;count:number;source:'opening'|'external'|'forecast';at:number;cof:number;black?:boolean;cut?:boolean;extraBlack?:boolean;extraCut?:boolean;tapeFactor?:2;tapeBeforeBD?:boolean;mntPanel?:'OC'|'LCM';}
 export interface PolRatios {blackRatio?:number;cutRatio?:number}
 export const defaultPolRatio=.3;
-export interface Scenario {schemaVersion:1;mode?:Mode;shift?:'DAY'|'NIGHT';date?:string;configurationVersion?:string;productionBlock?:string;cofPerPiece?:number;polRatios?:PolRatios;forecast?:{plan:number;version:string;amounts:Record<'BD'|'POL'|'REVIEW'|'FILM',number>};id:string;name:string;synthetic:boolean;seed:string;duration:number;lots:Lot[];targets:Partial<Record<Step,number>>;confirmedTargetsOnly?:boolean;importance?:Partial<Record<Step,number>>;yield:Record<Kind,number>;weights:{target:number;staff:number;out:number};sourceNote:string;rawFA:number;inConfirmed:boolean;conditionalPOLConfirmed?:boolean;cutTVConfirmed:boolean;cutMNTConfirmed:boolean;disabled:string[];minimum:Partial<Record<Step,number>>;}
+export interface Scenario {workHours?:Record<string,4|8|10>;schemaVersion:1;mode?:Mode;shift?:'DAY'|'NIGHT';date?:string;configurationVersion?:string;productionBlock?:string;cofPerPiece?:number;polRatios?:PolRatios;forecast?:{plan:number;version:string;amounts:Record<'BD'|'POL'|'REVIEW'|'FILM',number>};id:string;name:string;synthetic:boolean;seed:string;duration:number;lots:Lot[];targets:Partial<Record<Step,number>>;confirmedTargetsOnly?:boolean;importance?:Partial<Record<Step,number>>;yield:Record<Kind,number>;weights:{target:number;staff:number;out:number};sourceNote:string;rawFA:number;inConfirmed:boolean;conditionalPOLConfirmed?:boolean;cutTVConfirmed:boolean;cutMNTConfirmed:boolean;disabled:string[];minimum:Partial<Record<Step,number>>;}
 export type Formation=Partial<Record<Step,number[]>>;
 export type InspectionStage='VI'|'OC_VI'|'LCM_VI';
 export const inspectionStages:readonly InspectionStage[]=['VI','OC_VI','LCM_VI'];
@@ -84,6 +84,7 @@ export function configurePOL(s:Scenario,ratio:number,cutRatio?:number){if(!Numbe
 }
 export function freeze<T>(value:T):T{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}return value;}
 export function validate(s:Scenario,f:Formation,requireConfirmedInput=true){
+ if(s.workHours){if(typeof s.workHours!=='object'||Array.isArray(s.workHours))throw Error('个人班次无效');for(const [key,hours] of Object.entries(s.workHours)){const match=/^([A-Z_]+)-([1-9][0-9]*)$/.exec(key);if(!match||!stages.includes(match[1] as Step)||['BUBBLE','OUT'].includes(match[1])||Number(match[2])>stageSlots(match[1] as Step,s)||![4,8,10].includes(hours))throw Error('个人班次无效');}}
  if(requireConfirmedInput&&s.inConfirmed!==true)throw Error('新增 IN 口径未确认：不得把上游流入重复计为独立新投入');
  if(!Number.isSafeInteger(s.rawFA)||s.rawFA<0)throw Error('FA共享原始值不合法');
  if(typeof s.seed!=='string'||!s.seed.length||s.seed.length>256)throw Error('情景种子不合法');
