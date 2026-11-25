@@ -49,6 +49,7 @@ let rosterKey='';function renderRoster(){const list=visibleTowers(session.scenar
  row.querySelector<HTMLButtonElement>('[data-plus]')?.addEventListener('click',()=>change(stage,1));row.querySelector<HTMLButtonElement>('[data-minus]')?.addEventListener('click',()=>change(stage,-1));$('element-roster').append(row);
 }
 };const refreshGame=()=>{scene.refresh();refresh();};const dataCenter=setupDataCenter(session,refreshGame);const modes=setupModeUI(session,refreshGame,say,dataCenter);let uiPhase='',lastTick=0;
+function plusRow(stage:Step){return document.querySelector<HTMLElement>('.element-row[data-stage='+stage+']');}
 function refresh(){const s=session.scenario,phase=session.phase;renderRoster();modes.update();document.body.dataset.phase=phase;$('staff-count').textContent=String(assigned());$('scenario-name').textContent=s.name;$('data-source').textContent=s.synthetic?'SYNTHETIC · 不用于正式绩效':'日报快照 · 产能/成功率仍待验收';$('opening-count').textContent=String(s.lots.filter(l=>l.source==='opening').reduce((n,l)=>n+l.count,0));$('in-count').textContent=String(s.lots.filter(l=>l.source==='external').reduce((n,l)=>n+l.count,0));$('target-count').textContent=Object.keys(s.targets).length?'≤ '+Object.values(s.targets).reduce((n,v)=>n+(v||0),0):'待确认';$('opening-detail').textContent='含各工序独立存量 · FA '+s.rawFA+' 另存';$('in-detail').textContent=s.inConfirmed?'已确认独立投入，不重复计入流入':'IN口径待确认，开战已阻断';
 
  $('phase-label').textContent=phase==='setup'?'① 战前布阵':phase==='battle'?'② 自动战斗 · 已锁定':'③ 本班结算';
@@ -61,6 +62,11 @@ function refresh(){const s=session.scenario,phase=session.phase;renderRoster();m
   const plus=document.querySelector<HTMLButtonElement>('[data-plus='+stage+']')!;
   const minus=document.querySelector<HTMLButtonElement>('[data-minus='+stage+']')!;
   $('count-'+stage).textContent=String(count);
+  let choices=document.querySelector<HTMLElement>('[data-hours="'+stage+'"]');
+  if(!choices){choices=document.createElement('span');choices.className='soldier-hours';choices.dataset.hours=stage;plusRow(stage)?.append(choices);}
+  const key=(formation[stage]||[]).map(slot=>slot+':'+(s.workHours?.[stage+'-'+slot]??10)).join(',')+':'+phase;
+  if(choices.dataset.key!==key){choices.dataset.key=key;choices.replaceChildren();for(const slot of formation[stage]||[]){const field=document.createElement('select');field.setAttribute('aria-label',stageLabel(stage,s)+' 小兵'+slot+'班次');for(const [value,text] of [[10,'D'],[8,'A'],[4,'0.5'],[0,'撤']] as const){const option=document.createElement('option');option.value=String(value);option.textContent=text;field.append(option);}field.title='小兵'+slot+'：D班10h / A班8h / 0.5班4h';field.value=String(s.workHours?.[stage+'-'+slot]??10);field.disabled=phase!=='setup';field.onchange=()=>{try{if(field.value==='0')session.setSlot(stage,slot,false);else session.setSlotHours(stage,slot,Number(field.value) as 4|8|10);scene.refresh();refresh();}catch(e){say(e);}};choices.append(field);}}
+
   plus.disabled=phase!=='setup'||full;
   minus.disabled=phase!=='setup'||count===0;
   const reason=full?'工位已满':isBubble?'部署角色':'可部署';

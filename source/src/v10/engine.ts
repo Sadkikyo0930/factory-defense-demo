@@ -34,10 +34,10 @@ export function simulate(s:Scenario,f:Formation):Simulation {
  }
  function dispatch(){for(const stage of stages){
   const group=resources.filter(r=>r.stage===stage);if(!group.length)continue;const start=roundRobin[stage]||0;
-  for(let offset=0;offset<group.length;offset++){const ix=(start+offset)%group.length,r=group[ix];if(r.active.length||s.disabled.includes(r.id))continue;
+  for(let offset=0;offset<group.length;offset++){const ix=(start+offset)%group.length,r=group[ix];if(r.active.length||s.disabled.includes(r.id)||time>=Math.min(s.duration,(s.workHours?.[r.id]??10)*3600))continue;
    const actual=(stage==='VI'||stage==='OC_VI'||stage==='LCM_VI')&&hasWork('OUT',stage)?'OUT':stage; // Ship checked stock using the same lane and finite operator time.
-   if(!hasWork(actual,stage))continue;const batch=take(actual,stage==='BUBBLE'?8:1,stage);r.active=batch;r.actual=actual;r.started=time;const duration=serviceTime(actual,s.lots[batch[0].lot]);r.end=time+duration;
-   const busy=Math.min(duration,s.duration-time);resourceBusy[r.id]=(resourceBusy[r.id]||0)+busy;ledger[actual].busySeconds+=busy;
+   if(!hasWork(actual,stage))continue;const batch=take(actual,stage==='BUBBLE'?8:1,stage);r.active=batch;r.actual=actual;r.started=time;const duration=serviceTime(actual,s.lots[batch[0].lot]);r.end=time+duration;const until=Math.min(s.duration,(s.workHours?.[r.id]??10)*3600);if((s.workHours?.[r.id]??10)<10&&r.end>until+1e-8)r.end=s.duration+1;
+   const busy=Math.min(duration,Math.min(s.duration,(s.workHours?.[r.id]??10)*3600)-time);resourceBusy[r.id]=(resourceBusy[r.id]||0)+busy;ledger[actual].busySeconds+=busy;
    for(const p of batch)visualServices.push({lotId:s.lots[p.lot].id,first:p.first,count:p.count,stage:actual,start:time,end:r.end,resource:r.id});
    roundRobin[stage]=(ix+1)%group.length;if(stage==='BUBBLE')batches.push({start:time,end:r.end,count:batch.reduce((n,p)=>n+p.count,0),modes:[...new Set(batch.map(p=>s.lots[p.lot].mode))]});
   }
@@ -80,7 +80,7 @@ export function evaluate(s:Scenario,f:Formation):BattleResult {
  const simulation=simulate(s,f),potential=Object.fromEntries(stages.map(stage=>[stage,0])) as Record<Step,number>;
  for(const lot of s.lots)for(const stage of route(lot))potential[stage]+=lot.count;
  const sufficient:Formation={};for(const stage of stages)if(stage!=='BUBBLE'&&stage!=='OUT')sufficient[stage]=Array.from({length:stageSlots(stage,s)},(_,i)=>i+1);
- const benchmark=simulate(s,sufficient),work=clone(f),redundant:string[]=[];
+ const benchmark=simulate({...s,workHours:undefined},sufficient),work=clone(f),redundant:string[]=[];
  const validStages=stages.filter(stage=>s.targets[stage]!==undefined||(!s.confirmedTargetsOnly&&potential[stage]>0));let hit=0,importance=0;
  for(const stage of validStages){const target=s.targets[stage]||0,excess=Math.max(0,simulation.ledger[stage].closing-target),weight=s.importance?.[stage]||1;importance+=weight;hit+=weight*Math.max(0,1-excess/Math.max(1,potential[stage]-target));}
  for(const stage of stages){for(const slot of [...(work[stage]||[])].sort((a,b)=>b-a)){

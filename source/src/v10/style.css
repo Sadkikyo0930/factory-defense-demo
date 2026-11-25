@@ -59,3 +59,16 @@ body[data-phase=setup]>header,body[data-phase=setup]>.mission,body[data-phase=se
 #production-data #data-tables>details{grid-column:1/-1}
 #production-data .data-bu :is(th,td){padding:6px 8px;white-space:normal}
 @media(max-width:700px){#production-data #data-tables{grid-template-columns:1fr}}
+
+/* FD-002: one compact roster row per stage, short per-soldier controls. */
+.element-row{display:flex;flex-wrap:nowrap;min-height:48px;gap:2px;padding:3px}
+.element-row .element-select{min-width:0;flex:1;font-size:12px;height:40px}
+.element-row .element-select img{width:25px}
+.soldier-hours{display:flex;gap:2px;flex-shrink:0}
+.soldier-hours select{width:40px;min-width:0;padding:2px;font-size:11px;height:32px}
+.element-row button[data-plus],.element-row button[data-minus]{width:28px;min-width:28px;height:32px}
+.element-row strong{font-size:13px}
+#production-data #data-tables{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:700px){.roster{width:min(48vw,340px)}.element-select .element-glyph{display:none}.soldier-hours select{width:34px}.element-row .element-select img{display:none}#production-data td,#production-data th{padding:5px;white-space:normal;overflow-wrap:anywhere}}
+
+.soldier-hours{flex:1;min-width:0}.soldier-hours select{width:0;min-width:24px;flex:1}.element-row .element-select{flex:0 1 75px;overflow:hidden}

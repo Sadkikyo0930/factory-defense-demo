@@ -35,9 +35,10 @@ export class BattleSession {
   }
   this.updateScenario(next);
  }
- setSlot(stage:Step,slot:number,occupied:boolean){this.editable();if(stage==='BUBBLE'||stage==='OUT')throw Error('此设备不新增员工');if(slot<1||slot>stageSlots(stage,this.data))throw Error('部署位不合法');const next=clone(this.army),list=next[stage]||[];next[stage]=occupied?[...new Set([...list,slot])]:list.filter(n=>n!==slot);validate(this.data,next,false);this.army=next;}
+ setSlot(stage:Step,slot:number,occupied:boolean){this.editable();if(stage==='BUBBLE'||stage==='OUT')throw Error('此设备不新增员工');if(slot<1||slot>stageSlots(stage,this.data))throw Error('部署位不合法');const next=clone(this.army),list=next[stage]||[];next[stage]=occupied?[...new Set([...list,slot])]:list.filter(n=>n!==slot);validate(this.data,next,false);this.army=next;if(!occupied){const data=clone(this.data);if(data.workHours)delete data.workHours[stage+'-'+slot];this.data=freeze(data);}}
+ setSlotHours(stage:Step,slot:number,hours:4|8|10){this.editable();if(!(this.army[stage]||[]).includes(slot)||![4,8,10].includes(hours))throw Error('班次或小兵无效');const next=clone(this.data);next.workHours={...next.workHours,[stage+'-'+slot]:hours};this.data=freeze(next);}
  setBubbleOperator(deployed:boolean){this.editable();this.bubbleOperator=deployed;}
- clear(){this.editable();this.army={};this.bubbleOperator=false;}
+ clear(){this.editable();this.army={};this.bubbleOperator=false;const data=clone(this.data);delete data.workHours;this.data=freeze(data);}
  begin(){this.editable();if(this.data.productionBlock)throw Error('请前往生产任务数据中心：'+this.data.productionBlock);if(!this.data.inConfirmed)throw Error('新增 IN 口径尚未确认，请前往生产任务数据中心');if(this.data.conditionalPOLConfirmed===false)throw Error('POL 型号的切割或黑胶条件尚未确认，请前往生产任务数据中心');validate(this.data,this.army);for(const [stage,min] of Object.entries(this.data.minimum))if((this.army[stage as Step]?.length||0)<min!)throw Error('未达到本情景安全最低配备');this.state='battle';try{this.score=freeze(evaluate(this.data,freeze(clone(this.army))));return this.score;}catch(e){this.state='setup';throw e;}}
  finish(){if(this.state!=='battle')throw Error('当前没有进行中的战斗');this.state='result';return this.score!;}
  cancelFailedPresentation(){if(this.state==='battle'){this.state='setup';this.score=undefined;}}
