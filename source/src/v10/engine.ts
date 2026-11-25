@@ -71,7 +71,7 @@ export function outByInspection(s:Scenario,sim:Simulation){
  const lots=new Map(s.lots.map(l=>[l.id,l]));
  for(const lot of s.lots)if(lot.stage==='OUT'&&lot.source!=='forecast')lanes[inspectionStage(lot)][lot.source]+=lot.count;
  for(const terminal of sim.visual.terminal)if(terminal.stage==='OUT')lanes[inspectionStage(lots.get(terminal.lotId)!)][terminal.outcome==='success'?'completed':'closing']+=terminal.count;
- for(const service of sim.visual.services)if(service.stage==='OUT')lanes[inspectionStage(lots.get(service.lotId)!)].busySeconds+=Math.min(service.end,s.duration)-service.start;
+ for(const service of sim.visual.services)if(service.stage==='OUT')lanes[inspectionStage(lots.get(service.lotId)!)].busySeconds+=Math.max(0,Math.min(service.end,s.duration,(s.workHours?.[service.resource]??10)*3600)-service.start);
  return lanes;
 }
 export interface BattleResult {schemaVersion:1;scenarioId:string;scenarioSeed:string;createdAt:string;synthetic:boolean;scenarioSnapshot:Scenario;formation:Formation;simulation:Simulation;scoreBreakdown:{target:number;staff:number;out:number;total:number;weights:Scenario['weights']};benchmarkOut:number;potential:Record<Step,number>;redundant:string[];deployed:number;notes:string[];}

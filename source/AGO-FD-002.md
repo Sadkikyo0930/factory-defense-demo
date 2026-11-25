@@ -28,3 +28,11 @@ No screenshots or successful rendered browser QA: existing supported local brows
 Original import keeps report/plan in memory, so full page reload does not auto-persist imported production JSON; this change retains that privacy/data behavior. Re-import is required after reload; no silent demo substitution or production-data persistence added. This is a known acceptance limitation for supervisor decision.
 Local static candidate ZIP built; no online URL published. FD001 authorization does not extend to FD002; no main/Pages/workflow/deployment changes. Supervisor must explicitly authorize any future isolated preview publication.
 CORE001 stays priority waiting independent review; no new CORE review at final check. Existing automation remains unchanged; no new FD002 schedule added. No install/permission/credentials/fees/merge/deploy/production or JSON-producer changes.
+
+
+## REWORK7160221368
+CORE7160166195先完成提交755e83c40acdf8d63ebad0bc1ec7508b224f3baa后才处理本轮，未并行。
+OUT复盘忙时按min(service.end,scenario.duration,individual cutoff)截断，与ledger/resourceBusy一致；新增4h/8h未完成OUT边界回归。
+窄屏每兵种仍一行，最小行宽300px，roster局部横向滚动，名称保留82px且取消隐藏；不再强行把全部控件挤进48vw。实际手机/桌面截图仍缺，不能声称可用性验收通过；不重试既有失败浏览器路径。
+工件交接边界测试：4h兵在截止前60秒拿到需120秒的单件，另一10h兵仍在岗；现口径保留该未完成件在WIP，不自动交接，原身份/数量守恒。是否转交并继承已工作时间需要老板业务确认，已在当前聊天询问；本轮没有擅自改变该口径，不调整评分。
+实测专项9/9、引擎28项、BU/表现回归、TypeScript、37模块构建PASS。尚待业务口径和真实UI验收，本PR继续Draft。无发布/合并/安装/扩权。

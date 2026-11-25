@@ -72,3 +72,7 @@ body[data-phase=setup]>header,body[data-phase=setup]>.mission,body[data-phase=se
 @media(max-width:700px){.roster{width:min(48vw,340px)}.element-select .element-glyph{display:none}.soldier-hours select{width:34px}.element-row .element-select img{display:none}#production-data td,#production-data th{padding:5px;white-space:normal;overflow-wrap:anywhere}}
 
 .soldier-hours{flex:1;min-width:0}.soldier-hours select{width:0;min-width:24px;flex:1}.element-row .element-select{flex:0 1 75px;overflow:hidden}
+
+/* REWORK: preserve troop name, horizontally scroll a single compact row on narrow screens. */
+.roster{overflow-x:auto}.element-row{min-width:300px}.element-row .element-select{flex:0 0 82px;overflow:visible}.soldier-hours{min-width:80px}
+@media(max-width:700px){.element-row .element-select{font-size:12px}.roster{scrollbar-gutter:stable}}
